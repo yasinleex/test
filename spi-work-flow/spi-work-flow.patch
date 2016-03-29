@@ -1,0 +1,1611 @@
+commit f0de0ca12a261e0cc37a0d536120beac66c61207
+Author: liyaochuan <liyaochuan@datang.com>
+Date:   Tue Feb 23 19:10:11 2016 +0800
+
+    spi to uart: sc16is7x2
+
+diff --git a/1860c/base/kernel/linux-3.10/arch/arm/configs/V90_phone_v1_0_defconfig b/1860c/base/kernel/linux-3.10/arch/arm/configs/V90_phone_v1_0_defconfig
+index a4e81bb..b15afeb 100755
+--- a/1860c/base/kernel/linux-3.10/arch/arm/configs/V90_phone_v1_0_defconfig
++++ b/1860c/base/kernel/linux-3.10/arch/arm/configs/V90_phone_v1_0_defconfig
+@@ -380,7 +380,7 @@ CONFIG_MMC_COMIP_IOPOWER=y
+ CONFIG_ON2_COMIP=y
+ CONFIG_PWM_COMIP=y
+ CONFIG_RESET_COMIP=y
+-# CONFIG_SPI_COMIP is not set
++CONFIG_SPI_COMIP=y
+ # CONFIG_TPZ_COMIP is not set
+ # CONFIG_TPZ2_COMIP is not set
+ 
+@@ -1833,6 +1833,7 @@ CONFIG_DEVMEM=y
+ # CONFIG_SERIAL_MAX310X is not set
+ CONFIG_SERIAL_CORE=y
+ CONFIG_SERIAL_CORE_CONSOLE=y
++CONFIG_SERIAL_SC16IS7X2=y
+ # CONFIG_SERIAL_SCCNXP is not set
+ # CONFIG_SERIAL_TIMBERDALE is not set
+ # CONFIG_SERIAL_ALTERA_JTAGUART is not set
+@@ -1905,7 +1906,7 @@ CONFIG_SPI_MASTER=y
+ #
+ # SPI Protocol Masters
+ #
+-# CONFIG_SPI_SPIDEV is not set
++CONFIG_SPI_SPIDEV=y
+ # CONFIG_SPI_TLE62X0 is not set
+ 
+ #
+diff --git a/1860c/base/kernel/linux-3.10/arch/arm/mach-lc186x/board/board-v90.c b/1860c/base/kernel/linux-3.10/arch/arm/mach-lc186x/board/board-v90.c
+index 9fc4a01..65e4bdb 100755
+--- a/1860c/base/kernel/linux-3.10/arch/arm/mach-lc186x/board/board-v90.c
++++ b/1860c/base/kernel/linux-3.10/arch/arm/mach-lc186x/board/board-v90.c
+@@ -28,6 +28,11 @@
+ #include <plat/comip-backlight.h>
+ #include <plat/comip-thermal.h>
+ #include <plat/comip-battery.h>
++#if defined(CONFIG_SPI_COMIP) || defined(CONFIG_SPI_COMIP_MODULE)
++#include <linux/spi/spi.h>
++#include <plat/spi.h>
++#include <mach/devices.h>
++#endif
+ #if defined(CONFIG_COMIP_LC1160)
+ #include <plat/lc1160.h>
+ #include <plat/lc1160-pmic.h>
+@@ -61,6 +66,166 @@
+ #include <linux/mpu.h>
+ #endif
+ 
++#if defined(CONFIG_SPI_COMIP) || defined(CONFIG_SPI_COMIP_MODULE)
++#include <linux/serial_sc16is7x2.h>
++
++static struct sc16is7x2_platform_data sc16is7x2_pdata = {
++	.uartclk = 115200,
++	.uart_base = 0,
++	.gpio_base = 0,
++	.label = NULL,
++	.names = NULL,
++	.gpio_for_irq =12345,
++	.gpio_for_reset =12345,
++};
++
++//挂在spi0上的从设备数组
++static struct spi_board_info comip_spi_board_info[] = {
++	{//挂在spi0上的第一个从设备
++		.modalias = "sc16is7x2",//从设备的别名，用来和从设备的驱动进行关联
++		.platform_data = &sc16is7x2_pdata,//如果从设备有需要传入驱动的私有数据，则通过该属性传入
++		.controller_data = NULL,
++		.irq = 0,//此处忽略，在从设备probe中会重新赋值
++		.max_speed_hz = 100000,
++		.bus_num = 0,//用来标识该从设备挂载在哪个spi控制器上
++		.chip_select = 0,//使用第几个片选信号，一个spi控制器能支持片选总个数由master->num_chipselect 确定。所以此处的值应介于0 ~ master->num_chipselect之间。
++		.mode = SPI_MODE_0,
++	},
++
++//测试spidev.c添加==============================start
++	{//挂在spi0上的第二个从设备,生成的设备节点为/dev/spidev0.1 (第一个数字表示总线号，第二个数字表示片选号)
++		.modalias = "spidev",
++		.max_speed_hz = 200000,
++		.bus_num = 0, //spi0
++		.chip_select = 1,//这是挂在spi0上的第二个外设，该片选的值必须为1(另外一个外设的片选为0，此处的值必须和另外一个的不同)，否则probe不到该外设
++		.platform_data = NULL,
++	},
++
++	{//挂在spi1上的第一个从设备，生成的设备节点为/dev/spidev1.0 (第一个数字表示总线号，第二个数字表示片选号)
++		.modalias = "spidev",
++		.max_speed_hz = 200000,
++		.bus_num = 1, //spi0
++		.chip_select = 0,
++		.platform_data = NULL,
++	},
++
++	{//挂在spi2上的第一个从设备，生成的设备节点为/dev/spidev2.0 (第一个数字表示总线号，第二个数字表示片选号)
++		.modalias = "spidev",
++		.max_speed_hz = 200000,
++		.bus_num = 2, //spi0
++		.chip_select = 0,
++		.platform_data = NULL,
++	},
++//测试spidev.c添加==============================end
++
++/*
++	{//挂在spi0上的第二个从设备
++		.modalias = "foo1",
++		.max_speed_hz = 200000,
++		.bus_num = 0, //spi0
++		.chip_select = 0,
++		.platform_data = NULL,
++	},
++	{//挂在spi1上的第一个从设备
++		.modalias = "foo2",
++		.max_speed_hz = 150000,
++		.bus_num = 1,//spi1
++		.chip_select = 0,
++		.platform_data = NULL,
++	},
++	{//挂在spi2上的第一个从设备
++		.modalias = "foo3",
++		.max_speed_hz = 150000,
++		.bus_num = 2,//spi2
++		.chip_select = 0,
++		.platform_data = NULL,
++	},
++*/
++};
++
++//添加片选信号的回调函数，这个回调函数因board而异，因此放在board中实现
++//参考最终调用位置ssi->pdata->cs_state(ssi->chip_select, level);实现
++static int spi0_cs_state(int chipselect, int level)
++{
++	/*TODO:
++	每次数据传输都会调用这个函数(如果有的话)
++	实际调用时，参数chipselect来自spi_board_info中的chip_select。但是chip_select的含义
++	是由用户决定的，假设由从设备传来的chip_select为0，表示使用GPIO_118作为
++	片选，为1表示用GPIO_119作为片选，传入2表示使用spi控制器自身支持的
++	一个片选信号，那么此处的实现可能是如下这样的:
++	if(0 == chipselect) {
++		ret = gpio_request(GPIO_118, "gpio_name")
++		//do error check of ret
++		gpio_direction_output(GPIO_118, level);
++		gpio_free(GPIO_118);
++		return 1;
++	}
++	if(1 == chipselect) {
++		ret = gpio_request(GPIO_119, "gpio_name")
++		//do error check of ret
++		gpio_direction_output(GPIO_119, level);
++		gpio_free(GPIO_119);
++		return 1;
++	}
++	if(2 == chipselect) {
++		TODO: 需要用某种方式配置控制器的寄存器......
++		一种可能的方法是在这里返回一个flag，然后驱动
++		基于该返回值去配置好对应寄存器
++		return 1;
++	}
++	*/
++	return 1;
++}
++
++static struct comip_spi_platform_data comip_spi0_info = {
++	.num_chipselect = 2,//该spi控制器(spi0)所能支持的片选总数，有几个外设就填几，如果填小了，则多余的外设不会probe
++	.cs_state = spi0_cs_state,
++};
++
++static struct comip_spi_platform_data comip_spi1_info = {//foo
++	.num_chipselect = 1,
++	.cs_state = NULL,
++};
++
++static struct comip_spi_platform_data comip_spi2_info = {//foo
++	.num_chipselect = 1,
++	.cs_state = NULL,
++};
++static void __init comip_init_spi(void)
++{
++	comip_set_spi0_info(&comip_spi0_info);//注册spi0设备(控制器)，并传入该设备的私有数据comip_spi0_info
++	comip_set_spi1_info(&comip_spi1_info);//foo
++	comip_set_spi2_info(&comip_spi2_info);//foo
++
++/*注册挂在spi0上的所有从设备。
++这个函数会先将每个从设备的节点信息逐个挂在全局链表board_list中，每挂载一个的
++同时会遍历一遍spi_master_list，针对每个master节点，通过调用spi_match_master_to_boardinfo，来比对
++master节点的bus_num和当前从设备的bus_num，如果发现二者一致则会注册该从设备的device
++在从设备的设备注册过程中会将该从设备和其对应的master绑定，该绑定在spi_new_device中
++的spi_alloc_device调用中实现，实现的方法就是让从设备的master域指向该master。从设备注册
++过程会去match对应的从设备驱动，当然还是通过name去找了。找到了我们就看到对应的
++从设备的probe会被执行。
++如果无法匹配到对应的master，则从设备不会被注册，驱动的probe当然不会被调用。
++*/
++	spi_register_board_info(comip_spi_board_info, ARRAY_SIZE(comip_spi_board_info));
++
++/*
++在spi.c中维护了两个全局链表，如下:
++static LIST_HEAD(board_list);
++static LIST_HEAD(spi_master_list);
++board_list 中会存放所有的spi从设备节点，节点的添加动作发生在spi_register_board_info中。
++spi_master_list中会存放所有的spi控制器节点，即master的节点。这在spi控制器驱动注册过程中，通过
++调用spi_register_master来进行节点的添加。
++以上可以看出必须先注册控制器的device，而后注册控制器的驱动以添加控制器对应的
++master节点到链表中。
++
++从以上分析也可以看到，针对spi_board_info实例化的按照不同的spi控制器的分组其实是没有
++必要的，因为不管是挂在哪个控制器上的从设备的info都会被添加到同一个链表中(全局的board_list)，
++然后再去和邋spi_master_list中的每个maser去匹配。
++*/	
++}
++#endif
++
+ #ifdef CONFIG_USB_HSIC_USB3503
+ #include <linux/platform_data/usb3503.h>
+ #endif
+@@ -627,6 +792,13 @@ static struct mfp_pin_cfg comip_mfp_cfg[] = {
+ 	{CODEC_PA_PIN,		MFP_PIN_MODE_GPIO},
+ #endif
+ 
++#if defined(CONFIG_SPI_COMIP) || defined(CONFIG_SPI_COMIP_MODULE)
++	{MFP_PIN_GPIO(157), 	MFP_PIN_MODE_0},
++	{MFP_PIN_GPIO(158), 	MFP_PIN_MODE_0},
++	{MFP_PIN_GPIO(159), 	MFP_PIN_MODE_0},
++	{MFP_PIN_GPIO(160), 	MFP_PIN_MODE_0},
++#endif
++
+ #if defined (CONFIG_USB_HSIC_USB3503)
+ 	{HSIC_RESET_N_PIN,      MFP_PIN_MODE_GPIO},
+ 	{HSIC_INT_N_PIN,        MFP_PIN_MODE_GPIO},
+@@ -811,6 +983,12 @@ static struct mfp_pull_cfg comip_mfp_pull_cfg[] = {
+ 	{MFP_PIN_GPIO(148), 	MFP_PULL_UP},
+ #endif
+ 
++#if defined(CONFIG_SPI_COMIP) || defined(CONFIG_SPI_COMIP_MODULE)
++	{MFP_PIN_GPIO(157), 	MFP_PULL_UP},
++	{MFP_PIN_GPIO(158), 	MFP_PULL_UP},
++	{MFP_PIN_GPIO(159), 	MFP_PULL_UP},
++	{MFP_PIN_GPIO(160), 	MFP_PULL_UP},
++#endif
+ };
+ 
+ #ifdef CONFIG_BAT_ID_BQ2022A
+@@ -2195,6 +2373,9 @@ static void __init comip_init_board_early(void)
+ 	comip_init_mfp();
+ 	comip_init_gpio_lp();
+ 	comip_init_i2c();
++#if defined(CONFIG_SPI_COMIP) || defined(CONFIG_SPI_COMIP_MODULE)
++	comip_init_spi();
++#endif
+ 	comip_init_lcd();
+ 	comip_init_codec();
+ }
+diff --git a/1860c/base/kernel/linux-3.10/arch/arm/mach-lc186x/devices.c b/1860c/base/kernel/linux-3.10/arch/arm/mach-lc186x/devices.c
+old mode 100644
+new mode 100755
+index 1304805..2aed2c6
+--- a/1860c/base/kernel/linux-3.10/arch/arm/mach-lc186x/devices.c
++++ b/1860c/base/kernel/linux-3.10/arch/arm/mach-lc186x/devices.c
+@@ -22,9 +22,9 @@ void __init comip_register_device(struct platform_device *dev, void *data)
+ {
+ 	int ret;
+ 
+-	dev->dev.platform_data = data;
++	dev->dev.platform_data = data;//传入设备的私有数据以供其驱动提取
+ 
+-	ret = platform_device_register(dev);
++	ret = platform_device_register(dev);//平台设备注册的最后一步
+ 	if (ret)
+ 		dev_err(&dev->dev, "unable to register device: %d\n", ret);
+ }
+@@ -314,6 +314,7 @@ void __init comip_set_i2c4_info(struct comip_i2c_platform_data *info)
+ 	comip_register_device(&comip_device_i2c4, info);
+ }
+ 
++#if defined(CONFIG_SPI_COMIP) || defined(CONFIG_SPI_COMIP_MODULE)
+ static struct resource comip_resource_spi0[] = {
+ 	[0] = {
+ 		.start = SSI0_BASE,
+@@ -337,15 +338,15 @@ static struct resource comip_resource_spi0[] = {
+ 	},
+ };
+ 
+-struct platform_device comip_device_spi0 = {
+-	.name = "comip-spi",
+-	.id = 0,
+-	.resource = comip_resource_spi0,
+-	.num_resources = ARRAY_SIZE(comip_resource_spi0),
++struct platform_device comip_device_spi0 = {//spi控制器的device信息(这是一个平台设备)
++	.name = "comip-spi",//设备名称，用来匹配驱动
++	.id = 0,//设备id，对应于驱动中的master->bus_num,   用来区别同一个驱动下的不同设备。因为一个驱动可以对应多个设备。对本例而言，我们只有一个spi驱动，但是却有三个spi控制器在用它
++	.resource = comip_resource_spi0,//设备资源数组，寄存器映射或中断号或dma号等等
++	.num_resources = ARRAY_SIZE(comip_resource_spi0),//上述资源的数量(即上述数组宽度)
+ };
+ 
+ void __init comip_set_spi0_info(struct comip_spi_platform_data *info)
+-{
++{//注册spi控制器为platform device，info将作为该设备的私有数据传入，以供驱动提取
+ 	comip_register_device(&comip_device_spi0, info);
+ }
+ 
+@@ -418,6 +419,7 @@ void __init comip_set_spi2_info(struct comip_spi_platform_data *info)
+ {
+ 	comip_register_device(&comip_device_spi2, info);
+ }
++#endif
+ 
+ static u64 comip_mmc_dma_mask = COMIP_DMA_BIT_MASK;
+ static struct resource comip_resource_mmc0[] = {
+diff --git a/1860c/base/kernel/linux-3.10/arch/arm/plat-lc/drivers/base/spi/comip-spi.c b/1860c/base/kernel/linux-3.10/arch/arm/plat-lc/drivers/base/spi/comip-spi.c
+old mode 100644
+new mode 100755
+index 68debfb..8f4a2fc
+--- a/1860c/base/kernel/linux-3.10/arch/arm/plat-lc/drivers/base/spi/comip-spi.c
++++ b/1860c/base/kernel/linux-3.10/arch/arm/plat-lc/drivers/base/spi/comip-spi.c
+@@ -763,9 +763,9 @@ static void comip_spi_cleanup(struct spi_device *spi)
+ static int __init comip_spi_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+-	struct comip_spi_platform_data *pdata = dev->platform_data;
+-	struct spi_master *master;
+-	struct comip_ssi *ssi;
++	struct comip_spi_platform_data *pdata = dev->platform_data;//由该设备传入的针对该spi控制器的私有数据，每个控制器都可以通过自己的设备属性集传入与众不同的私有数据信息
++	struct spi_master *master;//针对spi框架层的master属性集
++	struct comip_ssi *ssi;//该具体的spi控制器的属性集
+ 	struct resource *r;
+ 	int dma_tx_channel;
+ 	int dma_rx_channel;
+@@ -798,21 +798,22 @@ static int __init comip_spi_probe(struct platform_device *pdev)
+ 
+ 	/* Allocate master with space for drv_data and null dma buffer. */
+ 	master = spi_alloc_master(dev, sizeof(struct comip_ssi));
++	//注意这个实现在给master分配的空间中会追加上该具体的spi控制器的属性集信息(即追加了sizeof(*ssi))
+ 	if (!master) {
+ 		dev_err(&pdev->dev, "cannot alloc spi_master\n");
+ 		ret = -ENOMEM;
+ 		goto out;
+ 	}
+ 
+-	master->bus_num = pdev->id;
+-	master->num_chipselect = pdata->num_chipselect;
++	master->bus_num = pdev->id;//bus_num就是设备的id
++	master->num_chipselect = pdata->num_chipselect;//片选总数
+ 	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_LOOP;
+ 	master->cleanup = comip_spi_cleanup;
+ 	master->setup = comip_spi_setup;
+ 	master->transfer = comip_spi_transfer;
+ 
+-	ssi = spi_master_get_devdata(master);
+-	ssi->master = master;
++	ssi = spi_master_get_devdata(master);//因为上面给master分配的空间是追加了ssi的空间的，所以这里可以通过master得到ssi
++	ssi->master = master;//以下开始设置ssi的属性集参数
+ 	ssi->pdata = pdata;
+ 	ssi->pdev = pdev;
+ 	ssi->res = r;
+@@ -830,7 +831,7 @@ static int __init comip_spi_probe(struct platform_device *pdev)
+ 	ssi->base = ioremap(r->start, r->end - r->start + 1);
+ 	if (!ssi->base) {
+ 		ret = -ENOMEM;
+-		dev_err(&pdev->dev, "cannot remap io 0x%08x\n", r->start);
++		dev_err(&pdev->dev, "cannot remap io 0x%08x\n", (unsigned int)r->start);
+ 		goto out_ioremap;
+ 	}
+ 
+diff --git a/1860c/base/kernel/linux-3.10/drivers/spi/spidev.c b/1860c/base/kernel/linux-3.10/drivers/spi/spidev.c
+old mode 100644
+new mode 100755
+index 911e9e0..0459719
+--- a/1860c/base/kernel/linux-3.10/drivers/spi/spidev.c
++++ b/1860c/base/kernel/linux-3.10/drivers/spi/spidev.c
+@@ -39,6 +39,22 @@
+ 
+ #include <asm/uaccess.h>
+ 
++/**********************************/
++#define ENTER \
++do{ printk(KERN_INFO "[SPIDEV_DBG][%04d][%s]\n", __LINE__, __func__); }while(0)
++
++#define PRINT_DBG(format,x...) \
++do{ printk(KERN_INFO "[SPIDEV_DBG][%04d] " format, __LINE__, ## x); }while(0)
++
++#define PRINT_INFO(format,x...) \
++do{ printk(KERN_INFO "[SPIDEV_INFO][%04d] " format, __LINE__, ## x); }while(0)
++
++#define PRINT_WARN(format,x...) \
++do{ printk(KERN_INFO "[SPIDEV_WARN][%04d] " format, __LINE__, ## x); }while(0)
++
++#define PRINT_ERR(format,x...) \
++do{ printk(KERN_ERR "[SPIDEV_ERR][%04d][%s] " format, __LINE__, __func__, ## x); }while(0)
++/**********************************/
+ 
+ /*
+  * This supports access to SPI devices using normal userspace I/O calls.
+@@ -579,6 +595,7 @@ static int spidev_probe(struct spi_device *spi)
+ 	int			status;
+ 	unsigned long		minor;
+ 
++	ENTER;
+ 	/* Allocate driver data */
+ 	spidev = kzalloc(sizeof(*spidev), GFP_KERNEL);
+ 	if (!spidev)
+@@ -677,6 +694,8 @@ static int __init spidev_init(void)
+ 	 * that will key udev/mdev to add/remove /dev nodes.  Last, register
+ 	 * the driver which manages those device numbers.
+ 	 */
++
++	ENTER;
+ 	BUILD_BUG_ON(N_SPI_MINORS > 256);
+ 	status = register_chrdev(SPIDEV_MAJOR, "spi", &spidev_fops);
+ 	if (status < 0)
+diff --git a/1860c/base/kernel/linux-3.10/drivers/tty/serial/Kconfig b/1860c/base/kernel/linux-3.10/drivers/tty/serial/Kconfig
+old mode 100644
+new mode 100755
+index 7e7006f..7c18faa
+--- a/1860c/base/kernel/linux-3.10/drivers/tty/serial/Kconfig
++++ b/1860c/base/kernel/linux-3.10/drivers/tty/serial/Kconfig
+@@ -1484,6 +1484,15 @@ config SERIAL_RP2_NR_UARTS
+ 	  If multiple cards are present, the default limit of 32 ports may
+ 	  need to be increased.
+ 
++config SERIAL_SC16IS7X2
++	tristate "SC16IS7x2 chips"
++	depends on SPI_MASTER
++	select SERIAL_CORE
++	help
++	  Selecting this option will add support for SC16IS7x2 SPI UARTs.
++	  The GPIOs are exported via gpiolib interface.
++	  If unsure, say N.
++
+ endmenu
+ 
+ endif # TTY
+diff --git a/1860c/base/kernel/linux-3.10/drivers/tty/serial/Makefile b/1860c/base/kernel/linux-3.10/drivers/tty/serial/Makefile
+old mode 100644
+new mode 100755
+index eedfec4..d8c8d4e
+--- a/1860c/base/kernel/linux-3.10/drivers/tty/serial/Makefile
++++ b/1860c/base/kernel/linux-3.10/drivers/tty/serial/Makefile
+@@ -85,3 +85,4 @@ obj-$(CONFIG_SERIAL_AR933X)   += ar933x_uart.o
+ obj-$(CONFIG_SERIAL_EFM32_UART) += efm32-uart.o
+ obj-$(CONFIG_SERIAL_ARC)	+= arc_uart.o
+ obj-$(CONFIG_SERIAL_RP2)	+= rp2.o
++obj-$(CONFIG_SERIAL_SC16IS7X2)	+= sc16is7x2.o
+\ No newline at end of file
+diff --git a/1860c/base/kernel/linux-3.10/drivers/tty/serial/sc16is7x2.c b/1860c/base/kernel/linux-3.10/drivers/tty/serial/sc16is7x2.c
+new file mode 100755
+index 0000000..9f96885
+--- /dev/null
++++ b/1860c/base/kernel/linux-3.10/drivers/tty/serial/sc16is7x2.c
+@@ -0,0 +1,1113 @@
++/*
++drivers/serial/sc16is7x2.c
++*/
++
++/**
++ * drivers/serial/sc16is7x2.c
++ *
++ * Copyright (C) 2009 Manuel Stahl <manuel.stahl@iis.fraunhofer.de>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ * The SC16IS7x2 device is a SPI driven dual UART with GPIOs.
++ *
++ * The driver exports two uarts and a gpiochip interface.
++ */
++
++/* #define DEBUG */
++
++#include <linux/delay.h>
++#include <linux/workqueue.h>
++#include <linux/device.h>
++#include <linux/serial_reg.h>
++#include <linux/serial_core.h>
++#include <linux/serial.h>
++#include <linux/gpio.h>
++#include <linux/spi/spi.h>
++#include <linux/freezer.h>
++#include <linux/tty_flip.h>
++#include <linux/serial_sc16is7x2.h>
++#include <linux/module.h>
++
++#define MAX_SC16IS7X2		8
++#define FIFO_SIZE		64
++
++#define DRIVER_NAME		"sc16is7x2"
++#define TYPE_NAME		"SC16IS7x2"
++
++
++#define REG_READ	0x80
++#define REG_WRITE	0x00
++
++/* Special registers */
++#define REG_TXLVL	0x08	/* Transmitter FIFO Level register */
++#define REG_RXLVL	0x09	/* Receiver FIFO Level register */
++#define REG_IOD		0x0A	/* IO Direction register */
++#define REG_IOS		0x0B	/* IO State register */
++#define REG_IOI		0x0C	/* IO Interrupt Enable register */
++#define REG_IOC		0x0E	/* IO Control register */
++
++#define IOC_SRESET	0x08    /* Software reset */
++#define IOC_GPIO30	0x04    /* GPIO 3:0 unset: as IO, set: as modem pins */
++#define IOC_GPIO74	0x02    /* GPIO 7:4 unset: as IO, set: as modem pins */
++#define IOC_IOLATCH	0x01    /* Unset: input unlatched, set: input latched */
++
++struct sc16is7x2_chip;
++
++/*
++ * Some registers must be read back to modify.
++ * To save time we cache them here in memory.
++ */
++struct sc16is7x2_channel {
++	struct sc16is7x2_chip	*chip;	/* back link */
++	struct uart_port	uart;
++
++	/* Workqueue that does all the magic */
++	struct workqueue_struct *workqueue;
++	struct work_struct	work;
++
++	u16		quot;		/* baud rate divisor */
++	u8		iir;		/* state of IIR register */
++	u8		lsr;		/* state of LSR register */
++	u8		msr;		/* state of MSR register */
++	u8		ier;		/* cache for IER register */
++	u8		fcr;		/* cache for FCR register */
++	u8		lcr;		/* cache for LCR register */
++	u8		mcr;		/* cache for MCR register */
++	u8		efr;		/* cache for EFR register */
++#ifdef DEBUG
++	bool		handle_irq;
++#endif
++	bool		handle_baud;	/* baud rate needs update */
++	bool		handle_regs;	/* other regs need update */
++	u8		buf[FIFO_SIZE+1]; /* fifo transfer buffer */
++};
++
++struct sc16is7x2_chip {
++	struct spi_device *spi;
++	struct sc16is7x2_channel channel[2];
++
++#ifdef CONFIG_GPIOLIB
++	struct gpio_chip gpio;
++	struct mutex	io_lock;	/* lock for GPIO functions */
++	u8		io_dir;		/* cache for IODir register */
++	u8		io_state;	/* cache for IOState register */
++	u8		io_gpio;	/* PIN is GPIO */
++	u8		io_control;	/* cache for IOControl register */
++#endif
++};
++
++/* ******************************** SPI ********************************* */
++
++static inline u8 write_cmd(u8 reg, u8 ch)
++{
++	return REG_WRITE | (reg & 0xf) << 3 | (ch & 0x1) << 1;
++}
++
++static inline u8 read_cmd(u8 reg, u8 ch)
++{
++	return REG_READ  | (reg & 0xf) << 3 | (ch & 0x1) << 1;
++}
++
++/*
++ * sc16is7x2_write - Write a new register content (sync)
++ * @reg: Register offset
++ * @ch:  Channel (0 or 1)
++ */
++static int sc16is7x2_write(struct sc16is7x2_chip *ts, u8 reg, u8 ch, u8 val)
++{
++	u8 out[2];
++
++	out[0] = write_cmd(reg, ch);
++	out[1] = val;
++	return spi_write(ts->spi, out, sizeof(out));
++}
++
++/**
++ * sc16is7x2_read - Read back register content
++ * @reg: Register offset
++ * @ch:  Channel (0 or 1)
++ *
++ * Returns positive 8 bit value from the device if successful or a
++ * negative value on error
++ */
++static int sc16is7x2_read(struct sc16is7x2_chip *ts, unsigned int reg, unsigned int ch)
++{
++	return spi_w8r8(ts->spi, read_cmd(reg, ch));
++}
++
++/* ******************************** IRQ ********************************* */
++
++static void sc16is7x2_handle_rx(struct sc16is7x2_chip *ts, unsigned int ch)
++{
++	struct sc16is7x2_channel *chan = &ts->channel[ch];
++	struct uart_port *uart = &chan->uart;
++	//struct tty_struct *tty = uart->state->port.tty;////yasin replaced by the struct below
++	struct tty_port *port = &uart->state->port;//yssin added
++	struct spi_message message;
++	struct spi_transfer t[2];
++	unsigned long flags;
++	u8 lsr = chan->lsr;
++	int rxlvl;
++
++	rxlvl = sc16is7x2_read(ts, REG_RXLVL, ch);
++	if (rxlvl <= 0) {
++		return;
++	} else if (rxlvl > FIFO_SIZE) {
++		/* Ensure sanity of RX level */
++		rxlvl = FIFO_SIZE;
++	}
++
++	dev_dbg(&ts->spi->dev, " %s (%i) %d bytes\n", __func__, ch, rxlvl);
++
++	memset(t, 0, sizeof t);
++	chan->buf[0] = read_cmd(UART_RX, ch);
++	t[0].len = 1;
++	t[0].tx_buf = &chan->buf[0];
++	t[1].len = rxlvl;
++	t[1].rx_buf = &chan->buf[1];
++
++	spi_message_init(&message);
++	spi_message_add_tail(&t[0], &message);
++	spi_message_add_tail(&t[1], &message);
++
++	if (spi_sync(ts->spi, &message)) {
++		dev_err(&ts->spi->dev, " SPI transfer RX handling failed\n");
++		return;
++	}
++	chan->buf[rxlvl + 1] = '\0';
++	dev_dbg(&ts->spi->dev, "%s\n", &chan->buf[1]);
++
++	spin_lock_irqsave(&uart->lock, flags);
++
++	if (unlikely(lsr & UART_LSR_BRK_ERROR_BITS)) {
++		/*
++		 * For statistics only
++		 */
++		if (lsr & UART_LSR_BI) {
++			lsr &= ~(UART_LSR_FE | UART_LSR_PE);
++			chan->uart.icount.brk++;
++			/*
++			 * We do the SysRQ and SAK checking
++			 * here because otherwise the break
++			 * may get masked by ignore_status_mask
++			 * or read_status_mask.
++			 */
++			if (uart_handle_break(&chan->uart))
++				goto ignore_char;
++		} else if (lsr & UART_LSR_PE)
++			chan->uart.icount.parity++;
++		else if (lsr & UART_LSR_FE)
++			chan->uart.icount.frame++;
++		if (lsr & UART_LSR_OE)
++			chan->uart.icount.overrun++;
++	}
++
++	/* Insert received data */
++	//tty_insert_flip_string(tty, &chan->buf[1], rxlvl);//yasin replaced by the function below
++	tty_insert_flip_string(port, &chan->buf[1], rxlvl);//yasin added
++	/* Update RX counter */
++	uart->icount.rx += rxlvl;
++
++ignore_char:
++	spin_unlock_irqrestore(&uart->lock, flags);
++
++	/* Push the received data to receivers */
++	if (rxlvl)
++		//tty_flip_buffer_push(tty);//yasin replaced by the function below
++		tty_flip_buffer_push(port);//yasin added
++}
++
++static void sc16is7x2_handle_tx(struct sc16is7x2_chip *ts, unsigned int ch)
++{
++	struct sc16is7x2_channel *chan = &ts->channel[ch];
++	struct uart_port *uart = &chan->uart;
++	struct circ_buf *xmit = &uart->state->xmit;//待发数据存在这个环形链表中
++	unsigned long flags;
++	unsigned int i, len;
++	int txlvl;
++
++	if (chan->uart.x_char && chan->lsr & UART_LSR_THRE) {
++		dev_dbg(&ts->spi->dev, " tx: x-char\n");
++		sc16is7x2_write(ts, UART_TX, ch, uart->x_char);
++		uart->icount.tx++;
++		uart->x_char = 0;
++		return;
++	}
++	if (uart_circ_empty(xmit) || uart_tx_stopped(&chan->uart))//待发数据链表为空
++		/* No data to send or TX is stopped */
++		return;
++
++	txlvl = sc16is7x2_read(ts, REG_TXLVL, ch);//TX FIFO剩余空间大小
++	if (txlvl <= 0) {
++		dev_dbg(&ts->spi->dev, " %s (%i) fifo full\n", __func__, ch);
++		return;
++	}
++
++	/* number of bytes to transfer to the fifo */
++	len = min(txlvl, (int)uart_circ_chars_pending(xmit));//还有至少len个待发数据
++
++	dev_dbg(&ts->spi->dev, " %s (%i) %d bytes\n", __func__, ch, len);
++
++	spin_lock_irqsave(&uart->lock, flags);
++	for (i = 1; i <= len ; i++) {//拷贝len个待发数据，并更新链表尾指针
++		chan->buf[i] = xmit->buf[xmit->tail];
++		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
++	}
++	uart->icount.tx += len;
++	spin_unlock_irqrestore(&uart->lock, flags);
++
++	chan->buf[0] = write_cmd(UART_TX, ch);//构建并发送待发数据的第一个字节(包含channel信息和读写标识)
++	if (spi_write(ts->spi, chan->buf, len + 1))//发送后续len个字节
++		dev_err(&ts->spi->dev, " SPI transfer TX handling failed\n");
++	//本次共发送了len+1个字节，第一个是命令
++
++	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
++		uart_write_wakeup(uart);
++}
++
++static void sc16is7x2_handle_baud(struct sc16is7x2_chip *ts, unsigned int ch)
++{
++	struct sc16is7x2_channel *chan = &ts->channel[ch];
++
++	if (!chan->handle_baud)
++		return;
++
++	dev_dbg(&ts->spi->dev, "%s\n", __func__);
++
++	sc16is7x2_write(ts, UART_IER, ch, 0);
++	sc16is7x2_write(ts, UART_LCR, ch, UART_LCR_DLAB); /* access DLL&DLM */
++	sc16is7x2_write(ts, UART_DLL, ch, chan->quot & 0xff);
++	sc16is7x2_write(ts, UART_DLM, ch, chan->quot >> 8);
++	sc16is7x2_write(ts, UART_LCR, ch, chan->lcr);     /* reset DLAB */
++
++	chan->handle_baud = false;
++}
++
++static void sc16is7x2_handle_regs(struct sc16is7x2_chip *ts, unsigned int ch)
++{
++	struct sc16is7x2_channel *chan = &ts->channel[ch];
++
++	if (!chan->handle_regs)
++		return;
++
++	dev_dbg(&ts->spi->dev, "%s\n", __func__);
++
++        sc16is7x2_write(ts, UART_LCR, ch, 0xBF);  /* access EFR */
++	sc16is7x2_write(ts, UART_EFR, ch, chan->efr);
++	sc16is7x2_write(ts, UART_LCR, ch, chan->lcr);
++	sc16is7x2_write(ts, UART_FCR, ch, chan->fcr);
++	sc16is7x2_write(ts, UART_MCR, ch, chan->mcr);
++	sc16is7x2_write(ts, UART_IER, ch, chan->ier);
++
++	chan->handle_regs = false;
++}
++
++static void sc16is7x2_read_status(struct sc16is7x2_chip *ts, unsigned int ch)
++{
++	struct sc16is7x2_channel *chan = &(ts->channel[ch]);
++/*	struct spi_message m;
++	struct spi_transfer t;
++	u8 *buf = chan->buf; */
++	u8 ier;
++
++#ifdef DEBUG
++	ier = sc16is7x2_read(ts, UART_IER, ch);
++#endif
++	chan->iir = sc16is7x2_read(ts, UART_IIR, ch);
++	chan->msr = sc16is7x2_read(ts, UART_MSR, ch);
++	chan->lsr = sc16is7x2_read(ts, UART_LSR, ch);
++/*
++	buf[0] = read_cmd(UART_IER, ch);
++	buf[1] = read_cmd(UART_IIR, ch);
++	buf[2] = read_cmd(UART_MSR, ch);
++	buf[3] = read_cmd(UART_LSR, ch);
++
++	t.tx_buf = buf;
++	t.rx_buf = &buf[16];
++	t.len = 5;
++
++	spi_message_init(&m);
++	spi_message_add_tail(&t, &m);
++	spi_sync(ts->spi, &m); */
++
++	dev_dbg(&ts->spi->dev, " %s ier=0x%02x iir=0x%02x msr=0x%02x lsr=0x%02x\n",
++			__func__, ier, chan->iir, chan->msr, chan->lsr);
++/*
++	dev_dbg(&ts->spi->dev, " %s ier=0x%02x iir=0x%02x msr=0x%02x lsr=0x%02x\n",
++			__func__, buf[17], buf[18], buf[19], buf[20]);
++*/
++}
++
++static void sc16is7x2_handle_channel(struct work_struct *w)
++{
++	struct sc16is7x2_channel *chan =
++			container_of(w, struct sc16is7x2_channel, work);
++	struct sc16is7x2_chip *ts = chan->chip;
++	unsigned int ch = (chan == ts->channel) ? 0 : 1;
++
++#ifdef DEBUG
++	dev_dbg(&ts->spi->dev, "%s (%i) %s\n", __func__, ch,
++			chan->handle_irq ? "irq" : "");
++	chan->handle_irq = false;
++#endif
++
++	do {
++		sc16is7x2_handle_baud(ts, ch);
++		sc16is7x2_handle_regs(ts, ch);
++
++		sc16is7x2_read_status(ts, ch);
++		sc16is7x2_handle_tx(ts, ch);
++		sc16is7x2_handle_rx(ts, ch);
++	} while (!(chan->iir & UART_IIR_NO_INT));
++
++	dev_dbg(&ts->spi->dev, "%s finished\n", __func__);
++}
++
++/* Trigger work thread*/
++static void sc16is7x2_dowork(struct sc16is7x2_channel *chan)
++{
++	if (!freezing(current))
++		queue_work(chan->workqueue, &chan->work);//根据chan的不同，调用各自的work
++}
++
++static irqreturn_t sc16is7x2_irq(int irq, void *data)
++{
++	struct sc16is7x2_channel *chan = data;//根据chan来区别两个不同的中断。
++
++#ifdef DEBUG
++	/* Indicate irq */
++	chan->handle_irq = true;
++#endif
++
++	/* Trigger work thread */
++	sc16is7x2_dowork(chan);//根据chan的不同，调用各自的work
++
++	return IRQ_HANDLED;
++}
++
++/* ******************************** UART ********************************* */
++
++#define to_sc16is7x2_channel(port) \
++		container_of(port, struct sc16is7x2_channel, uart)
++
++
++static unsigned int sc16is7x2_tx_empty(struct uart_port *port)
++{
++	struct sc16is7x2_channel *chan = to_sc16is7x2_channel(port);
++	struct sc16is7x2_chip *ts = chan->chip;
++	unsigned int lsr;
++
++	dev_dbg(&ts->spi->dev, "%s = %s\n", __func__,
++			chan->lsr & UART_LSR_TEMT ? "yes" : "no");
++
++	lsr = chan->lsr;
++	return lsr & UART_LSR_TEMT ? TIOCSER_TEMT : 0;
++}
++
++static unsigned int sc16is7x2_get_mctrl(struct uart_port *port)
++{
++	struct sc16is7x2_channel *chan = to_sc16is7x2_channel(port);
++	struct sc16is7x2_chip *ts = chan->chip;
++	unsigned int status;
++	unsigned int ret;
++
++	dev_dbg(&ts->spi->dev, "%s (0x%02x)\n", __func__, chan->msr);
++
++	status = chan->msr;
++
++	ret = 0;
++	if (status & UART_MSR_DCD)
++		ret |= TIOCM_CAR;
++	if (status & UART_MSR_RI)
++		ret |= TIOCM_RNG;
++	if (status & UART_MSR_DSR)
++		ret |= TIOCM_DSR;
++	if (status & UART_MSR_CTS)
++		ret |= TIOCM_CTS;
++	return ret;
++}
++
++static void sc16is7x2_set_mctrl(struct uart_port *port, unsigned int mctrl)
++{
++	struct sc16is7x2_channel *chan = to_sc16is7x2_channel(port);
++	struct sc16is7x2_chip *ts = chan->chip;
++
++	dev_dbg(&ts->spi->dev, "%s (0x%02x)\n", __func__, mctrl);
++
++	/* TODO: set DCD and DSR
++	 * CTS/RTS is handled automatically
++	 */
++}
++
++static void sc16is7x2_stop_tx(struct uart_port *port)
++{
++	/* Do nothing */
++}
++
++static void sc16is7x2_start_tx(struct uart_port *port)
++{
++	struct sc16is7x2_channel *chan = to_sc16is7x2_channel(port);
++	struct sc16is7x2_chip *ts = chan->chip;
++
++	dev_dbg(&ts->spi->dev, "%s\n", __func__);
++
++	/* Trigger work thread for sending data */
++	sc16is7x2_dowork(chan);
++}
++
++static void sc16is7x2_stop_rx(struct uart_port *port)
++{
++	struct sc16is7x2_channel *chan = to_sc16is7x2_channel(port);
++	struct sc16is7x2_chip *ts = chan->chip;
++
++	dev_dbg(&ts->spi->dev, "%s\n", __func__);
++
++	chan->ier &= ~UART_IER_RLSI;
++	chan->uart.read_status_mask &= ~UART_LSR_DR;
++	chan->handle_regs = true;
++	/* Trigger work thread for doing the actual configuration change */
++	sc16is7x2_dowork(chan);
++}
++
++static void sc16is7x2_enable_ms(struct uart_port *port)
++{
++	struct sc16is7x2_channel *chan = to_sc16is7x2_channel(port);
++	struct sc16is7x2_chip *ts = chan->chip;
++
++	dev_dbg(&ts->spi->dev, "%s\n", __func__);
++
++	chan->ier |= UART_IER_MSI;
++	chan->handle_regs = true;
++	/* Trigger work thread for doing the actual configuration change */
++	sc16is7x2_dowork(chan);
++}
++
++static void sc16is7x2_break_ctl(struct uart_port *port, int break_state)
++{
++	/* We don't support break control yet, do nothing */
++}
++static int sc16is7x2_startup(struct uart_port *port)
++{
++	struct sc16is7x2_channel *chan = to_sc16is7x2_channel(port);
++	struct sc16is7x2_chip *ts = chan->chip;
++	unsigned int ch = (&ts->channel[1] == chan) ? 1 : 0;
++	unsigned long flags;
++
++	dev_dbg(&ts->spi->dev, "\n%s (%d)\n", __func__, port->line);
++
++	/* Clear the interrupt registers. */
++	sc16is7x2_write(ts, UART_IER, ch, 0);
++	sc16is7x2_read_status(ts, ch);
++
++	/* Initialize work queue */
++	chan->workqueue = create_freezable_workqueue("sc16is7x2");
++	if (!chan->workqueue) {
++		dev_err(&ts->spi->dev, "Workqueue creation failed\n");
++		return -EBUSY;
++	}
++	INIT_WORK(&chan->work, sc16is7x2_handle_channel);
++
++	/* Setup IRQ. Actually we have a low active IRQ, but we want
++	 * one shot behaviour */
++	//yasin: uart_channel_0 & uart_channel_1 shared this irq
++	/*该sc16is7x2_startup函数会针对每个port执行一次，因此该函数
++	共执行两次，	所以以下的中断请求也会执行两次，每次
++	传入不同的chan，	所以当物理中断发生时，会有两次进入
++	该中断的handler，而	每次进入handler时会针对传入的chan调用
++	各自的workqueue*/
++	if (request_irq(ts->spi->irq, sc16is7x2_irq,
++			IRQF_TRIGGER_FALLING | IRQF_SHARED,
++			"sc16is7x2", chan)) {
++		dev_err(&ts->spi->dev, "IRQ request failed\n");
++		destroy_workqueue(chan->workqueue);
++		chan->workqueue = NULL;
++		return -EBUSY;
++	}
++
++
++	spin_lock_irqsave(&chan->uart.lock, flags);
++	chan->lcr = UART_LCR_WLEN8;
++	chan->mcr = 0;
++	chan->fcr = 0;
++	chan->ier = UART_IER_RLSI | UART_IER_RDI | UART_IER_THRI;
++	spin_unlock_irqrestore(&chan->uart.lock, flags);
++
++	sc16is7x2_write(ts, UART_FCR, ch, UART_FCR_ENABLE_FIFO |
++		       UART_FCR_CLEAR_RCVR | UART_FCR_CLEAR_XMIT);
++	sc16is7x2_write(ts, UART_FCR, ch, chan->fcr);
++	/* Now, initialize the UART */
++	sc16is7x2_write(ts, UART_LCR, ch, chan->lcr);
++	sc16is7x2_write(ts, UART_MCR, ch, chan->mcr);
++	sc16is7x2_write(ts, UART_IER, ch, chan->ier);
++
++	return 0;
++}
++
++static void sc16is7x2_shutdown(struct uart_port *port)
++{
++	struct sc16is7x2_channel *chan = to_sc16is7x2_channel(port);
++	struct sc16is7x2_chip *ts = chan->chip;
++	unsigned long flags;
++	unsigned int ch = port->line & 0x01;
++
++	dev_dbg(&ts->spi->dev, "%s\n", __func__);
++
++	BUG_ON(!chan);
++	BUG_ON(!ts);
++
++	/* Free the interrupt */
++	free_irq(ts->spi->irq, chan);
++
++	if (chan->workqueue) {
++		/* Flush and destroy work queue */
++		flush_workqueue(chan->workqueue);
++		destroy_workqueue(chan->workqueue);
++		chan->workqueue = NULL;
++	}
++
++	/* Suspend HW */
++	spin_lock_irqsave(&chan->uart.lock, flags);
++	chan->ier = UART_IERX_SLEEP;
++	spin_unlock_irqrestore(&chan->uart.lock, flags);
++	sc16is7x2_write(ts, UART_IER, ch, chan->ier);
++}
++
++static void
++sc16is7x2_set_termios(struct uart_port *port, struct ktermios *termios,
++		       struct ktermios *old)
++{
++	struct sc16is7x2_channel *chan = to_sc16is7x2_channel(port);
++	struct sc16is7x2_chip *ts = chan->chip;
++	unsigned long flags;
++	unsigned int baud;
++	u8 lcr, fcr = 0;
++
++	/* Ask the core to calculate the divisor for us. */
++	baud = uart_get_baud_rate(port, termios, old,
++				  port->uartclk / 16 / 0xffff,
++				  port->uartclk / 16);
++	chan->quot = uart_get_divisor(port, baud);
++	chan->handle_baud = true;
++
++	dev_dbg(&ts->spi->dev, "%s (baud %u)\n", __func__, baud);
++
++	/* set word length */
++	switch (termios->c_cflag & CSIZE) {
++	case CS5:
++		lcr = UART_LCR_WLEN5;
++		break;
++	case CS6:
++		lcr = UART_LCR_WLEN6;
++		break;
++	case CS7:
++		lcr = UART_LCR_WLEN7;
++		break;
++	default:
++	case CS8:
++		lcr = UART_LCR_WLEN8;
++		break;
++	}
++
++	if (termios->c_cflag & CSTOPB)
++		lcr |= UART_LCR_STOP;
++	if (termios->c_cflag & PARENB)
++		lcr |= UART_LCR_PARITY;
++	if (!(termios->c_cflag & PARODD))
++		lcr |= UART_LCR_EPAR;
++#ifdef CMSPAR
++	if (termios->c_cflag & CMSPAR)
++		lcr |= UART_LCR_SPAR;
++#endif
++
++	fcr = UART_FCR_ENABLE_FIFO;
++	/* configure the fifo */
++	if (baud < 2400)
++		fcr |= UART_FCR_TRIGGER_1;
++	else
++		fcr |= UART_FCR_R_TRIG_01 | UART_FCR_T_TRIG_10;
++
++	chan->efr = UART_EFR_ECB;
++	chan->mcr |= UART_MCR_RTS;
++	if (termios->c_cflag & CRTSCTS)
++		chan->efr |= UART_EFR_CTS | UART_EFR_RTS;
++
++	/*
++	 * Ok, we're now changing the port state.  Do it with
++	 * interrupts disabled.
++	 */
++	spin_lock_irqsave(&chan->uart.lock, flags);
++
++	/* we are sending char from a workqueue so enable */
++	//chan->uart.state->port.tty->low_latency = 1;//yasin replaced by the statement below
++	chan->uart.state->port.low_latency = 1;//yasin added
++
++	/* Update the per-port timeout. */
++	uart_update_timeout(port, termios->c_cflag, baud);
++
++	chan->uart.read_status_mask = UART_LSR_OE | UART_LSR_THRE | UART_LSR_DR;
++	if (termios->c_iflag & INPCK)
++		chan->uart.read_status_mask |= UART_LSR_FE | UART_LSR_PE;
++	if (termios->c_iflag & (BRKINT | PARMRK))
++		chan->uart.read_status_mask |= UART_LSR_BI;
++
++	/* Characters to ignore */
++	chan->uart.ignore_status_mask = 0;
++	if (termios->c_iflag & IGNPAR)
++		chan->uart.ignore_status_mask |= UART_LSR_PE | UART_LSR_FE;
++	if (termios->c_iflag & IGNBRK) {
++		chan->uart.ignore_status_mask |= UART_LSR_BI;
++		/*
++		 * If we're ignoring parity and break indicators,
++		 * ignore overruns too (for real raw support).
++		 */
++		if (termios->c_iflag & IGNPAR)
++			chan->uart.ignore_status_mask |= UART_LSR_OE;
++	}
++
++	/* ignore all characters if CREAD is not set */
++	if ((termios->c_cflag & CREAD) == 0)
++		chan->uart.ignore_status_mask |= UART_LSR_DR;
++
++	/* CTS flow control flag and modem status interrupts */
++	chan->ier &= ~UART_IER_MSI;
++	if (UART_ENABLE_MS(&chan->uart, termios->c_cflag))
++		chan->ier |= UART_IER_MSI;
++
++	chan->lcr = lcr;	/* Save LCR */
++	chan->fcr = fcr;	/* Save FCR */
++	chan->handle_regs = true;
++
++	spin_unlock_irqrestore(&chan->uart.lock, flags);
++
++	/* Trigger work thread for doing the actual configuration change */
++	sc16is7x2_dowork(chan);
++}
++
++static const char * sc16is7x2_type(struct uart_port *port)
++{
++	pr_debug("%s\n", __func__);
++	return TYPE_NAME;
++}
++
++static void sc16is7x2_release_port(struct uart_port *port)
++{
++	pr_debug("%s\n", __func__);
++}
++
++static int sc16is7x2_request_port(struct uart_port *port)
++{
++	pr_debug("%s\n", __func__);
++	return 0;
++}
++
++static void sc16is7x2_config_port(struct uart_port *port, int flags)
++{
++	struct sc16is7x2_channel *chan = to_sc16is7x2_channel(port);
++	struct sc16is7x2_chip *ts = chan->chip;
++
++	dev_dbg(&ts->spi->dev, "%s\n", __func__);
++	if (flags & UART_CONFIG_TYPE)
++		chan->uart.type = PORT_SC16IS7X2;
++}
++
++static int
++sc16is7x2_verify_port(struct uart_port *port, struct serial_struct *ser)
++{
++	if (ser->type == PORT_UNKNOWN || ser->type == PORT_SC16IS7X2)
++		return 0;
++
++	return -EINVAL;
++}
++
++static struct uart_ops sc16is7x2_uart_ops = {
++	.tx_empty	= sc16is7x2_tx_empty,
++	.set_mctrl	= sc16is7x2_set_mctrl,
++	.get_mctrl	= sc16is7x2_get_mctrl,
++	.stop_tx        = sc16is7x2_stop_tx,
++	.start_tx	= sc16is7x2_start_tx,
++	.stop_rx	= sc16is7x2_stop_rx,
++	.enable_ms      = sc16is7x2_enable_ms,
++	.break_ctl      = sc16is7x2_break_ctl,
++	.startup	= sc16is7x2_startup,
++	.shutdown	= sc16is7x2_shutdown,
++	.set_termios	= sc16is7x2_set_termios,
++	.type		= sc16is7x2_type,
++	.release_port   = sc16is7x2_release_port,
++	.request_port   = sc16is7x2_request_port,
++	.config_port	= sc16is7x2_config_port,
++	.verify_port	= sc16is7x2_verify_port,
++};
++
++
++/* ******************************** GPIO ********************************* */
++
++#ifdef CONFIG_GPIOLIB
++
++static int sc16is7x2_gpio_request(struct gpio_chip *gpio, unsigned int offset)
++{
++	struct sc16is7x2_chip *ts =
++			container_of(gpio, struct sc16is7x2_chip, gpio);
++	int control = (offset < 4) ? IOC_GPIO30 : IOC_GPIO74;
++	int ret = 0;
++
++	BUG_ON(offset > 8);
++	dev_dbg(&ts->spi->dev, "%s: offset = %d\n", __func__, offset);
++
++	mutex_lock(&ts->io_lock);
++
++	/* GPIO 0:3 and 4:7 can only be controlled as block */
++	ts->io_gpio |= BIT(offset);
++	if (ts->io_control & control) {
++		dev_dbg(&ts->spi->dev, "activate GPIOs %s\n",
++				(offset < 4) ? "0-3" : "4-7");
++		ts->io_control &= ~control;
++		ret = sc16is7x2_write(ts, REG_IOC, 0, ts->io_control);
++	}
++
++	mutex_unlock(&ts->io_lock);
++
++	return ret;
++}
++
++static void sc16is7x2_gpio_free(struct gpio_chip *gpio, unsigned int offset)
++{
++	struct sc16is7x2_chip *ts =
++			container_of(gpio, struct sc16is7x2_chip, gpio);
++	int control = (offset < 4) ? IOC_GPIO30 : IOC_GPIO74;
++	int mask = (offset < 4) ? 0x0f : 0xf0;
++
++	BUG_ON(offset > 8);
++
++	mutex_lock(&ts->io_lock);
++
++	/* GPIO 0:3 and 4:7 can only be controlled as block */
++	ts->io_gpio &= ~BIT(offset);
++	dev_dbg(&ts->spi->dev, "%s: io_gpio = 0x%02X\n", __func__, ts->io_gpio);
++	if (!(ts->io_control & control) && !(ts->io_gpio & mask)) {
++		dev_dbg(&ts->spi->dev, "deactivate GPIOs %s\n",
++				(offset < 4) ? "0-3" : "4-7");
++		ts->io_control |= control;
++		sc16is7x2_write(ts, REG_IOC, 0, ts->io_control);
++	}
++
++	mutex_unlock(&ts->io_lock);
++}
++
++static int sc16is7x2_direction_input(struct gpio_chip *gpio, unsigned int offset)
++{
++	struct sc16is7x2_chip *ts =
++			container_of(gpio, struct sc16is7x2_chip, gpio);
++	unsigned int io_dir;
++
++	BUG_ON(offset > 8);
++
++	mutex_lock(&ts->io_lock);
++
++	ts->io_dir &= ~BIT(offset);
++	io_dir = ts->io_dir;
++
++	mutex_unlock(&ts->io_lock);
++
++	return sc16is7x2_write(ts, REG_IOD, 0, io_dir);
++}
++
++static int sc16is7x2_direction_output(struct gpio_chip *gpio, unsigned int offset,
++				    int value)
++{
++	struct sc16is7x2_chip *ts =
++			container_of(gpio, struct sc16is7x2_chip, gpio);
++
++	BUG_ON(offset > 8);
++
++	mutex_lock(&ts->io_lock);
++
++	if (value)
++		ts->io_state |= BIT(offset);
++	else
++		ts->io_state &= ~BIT(offset);
++
++	ts->io_dir |= BIT(offset);
++
++	mutex_unlock(&ts->io_lock);
++
++	sc16is7x2_write(ts, REG_IOS, 0, ts->io_state);
++	return sc16is7x2_write(ts, REG_IOD, 0, ts->io_dir);
++}
++
++static int sc16is7x2_get(struct gpio_chip *gpio, unsigned int offset)
++{
++	struct sc16is7x2_chip *ts =
++			container_of(gpio, struct sc16is7x2_chip, gpio);
++	int level = -EINVAL;
++
++	BUG_ON(offset > 8);
++
++	mutex_lock(&ts->io_lock);
++
++	if (ts->io_dir & BIT(offset)) {
++		/* Output: return cached level */
++		level = (ts->io_state >> offset) & 0x01;
++	} else {
++		/* Input: read out all pins */
++		level = sc16is7x2_read(ts, REG_IOS, 0);
++		if (level >= 0) {
++			ts->io_state = level;
++			level = (ts->io_state >> offset) & 0x01;
++		}
++	}
++
++	mutex_unlock(&ts->io_lock);
++
++	return level;
++}
++
++static void sc16is7x2_set(struct gpio_chip *gpio, unsigned int offset, int value)
++{
++	struct sc16is7x2_chip *ts =
++			container_of(gpio, struct sc16is7x2_chip, gpio);
++	unsigned int io_state;
++
++	BUG_ON(offset > 8);
++
++	mutex_lock(&ts->io_lock);
++
++	if (value)
++		ts->io_state |= BIT(offset);
++	else
++		ts->io_state &= ~BIT(offset);
++	io_state = ts->io_state;
++
++	mutex_unlock(&ts->io_lock);
++
++	sc16is7x2_write(ts, REG_IOS, 0, io_state);
++}
++
++#endif /* CONFIG_GPIOLIB */
++
++/* ******************************** INIT ********************************* */
++
++static struct uart_driver sc16is7x2_uart_driver;
++
++static int sc16is7x2_register_gpio(struct sc16is7x2_chip *ts,
++		struct sc16is7x2_platform_data *pdata)
++{
++#ifdef CONFIG_GPIOLIB
++	ts->gpio.label = (pdata->label) ? pdata->label : DRIVER_NAME;
++	ts->gpio.request	= sc16is7x2_gpio_request;
++	ts->gpio.free		= sc16is7x2_gpio_free;
++	ts->gpio.get		= sc16is7x2_get;
++	ts->gpio.set		= sc16is7x2_set;
++	ts->gpio.direction_input = sc16is7x2_direction_input;
++	ts->gpio.direction_output = sc16is7x2_direction_output;
++
++	ts->gpio.base = pdata->gpio_base;
++	ts->gpio.names = pdata->names;
++	ts->gpio.ngpio = SC16IS7X2_NR_GPIOS;
++	ts->gpio.can_sleep = 1;
++	ts->gpio.dev = &ts->spi->dev;
++	ts->gpio.owner = THIS_MODULE;
++
++	mutex_init(&ts->io_lock);
++
++	/* disable all GPIOs, enable on request */
++	ts->io_gpio = 0;
++	ts->io_control = IOC_GPIO30 | IOC_GPIO74;
++	ts->io_state = 0;
++	ts->io_dir = 0;
++
++	sc16is7x2_write(ts, REG_IOI, 0, 0); /* no support for irqs yet */
++	sc16is7x2_write(ts, REG_IOC, 0, ts->io_control);
++	sc16is7x2_write(ts, REG_IOS, 0, ts->io_state);
++	sc16is7x2_write(ts, REG_IOD, 0, ts->io_dir);
++
++	return gpiochip_add(&ts->gpio);
++#else
++	return 0;
++#endif
++}
++
++static int sc16is7x2_register_uart_port(struct sc16is7x2_chip *ts,
++		struct sc16is7x2_platform_data *pdata, unsigned int ch)
++{
++	struct sc16is7x2_channel *chan = &(ts->channel[ch]);
++	struct uart_port *uart = &chan->uart;
++
++	/* Disable irqs and go to sleep */
++	sc16is7x2_write(ts, UART_IER, ch, UART_IERX_SLEEP);
++
++	chan->chip = ts;
++
++	uart->irq = ts->spi->irq;//yasin: uart_channel_0 & uart_channel_1 shared this irq
++	uart->uartclk = pdata->uartclk;
++	uart->fifosize = FIFO_SIZE;
++	uart->ops = &sc16is7x2_uart_ops;
++	uart->flags = UPF_SKIP_TEST | UPF_BOOT_AUTOCONF;
++	uart->line = pdata->uart_base + ch;
++	uart->type = PORT_SC16IS7X2;
++	uart->dev = &ts->spi->dev;
++
++	return uart_add_one_port(&sc16is7x2_uart_driver, uart);
++}
++
++static int sc16is7x2_probe(struct spi_device *spi)
++{
++	struct sc16is7x2_chip *ts;
++	struct sc16is7x2_platform_data *pdata;
++	int ret;
++
++	/* Only even uart base numbers are supported */
++	pdata = spi->dev.platform_data;
++	if (!pdata || !pdata->gpio_base || pdata->uart_base & 1) {
++		dev_dbg(&spi->dev, "incorrect or missing platform data\n");
++		return -EINVAL;
++	}
++
++//yasin_s
++	//Do spi configuration
++	spi->mode = SPI_MODE_0;
++	spi->bits_per_word = 8;
++
++	//TODO: Power on & Reset
++
++	ret = gpio_request(pdata->gpio_for_reset,"sc16is7x2_reset");
++	if (!ret) {
++		dev_err(&spi->dev, "gpio request failed (GPIO_%d)\n", pdata->gpio_for_reset);
++		return -EINVAL;
++	}
++	gpio_direction_output(pdata->gpio_for_reset, 1);
++	//do hardware reset
++	mdelay(1);
++	gpio_direction_output(pdata->gpio_for_reset, 0);
++	mdelay(1);
++	gpio_direction_output(pdata->gpio_for_reset, 1);
++	mdelay(1);
++
++	ret = gpio_request(pdata->gpio_for_irq,"sc16is7x2_irq");
++	if (!ret) {
++		dev_err(&spi->dev, "gpio request failed (GPIO_%d)\n", pdata->gpio_for_irq);
++		return -EINVAL;
++	}
++	gpio_direction_input(pdata->gpio_for_irq);
++	spi->irq = gpio_to_irq(pdata->gpio_for_irq);//yasin: uart_channel_0 & uart_channel_1 shared this irq
++//yasin_e
++
++	ts = kzalloc(sizeof(struct sc16is7x2_chip), GFP_KERNEL);
++	if (!ts)
++		return -ENOMEM;
++
++	spi_set_drvdata(spi, ts);
++	ts->spi = spi;
++
++	/* Reset the chip */
++	sc16is7x2_write(ts, REG_IOC, 0, IOC_SRESET);
++
++	ret = sc16is7x2_register_uart_port(ts, pdata, 0);
++	if (ret)
++		goto exit_destroy;
++	ret = sc16is7x2_register_uart_port(ts, pdata, 1);
++	if (ret)
++		goto exit_uart0;
++
++	ret = sc16is7x2_register_gpio(ts, pdata);
++	if (ret)
++		goto exit_uart1;
++
++	dev_info(&spi->dev, DRIVER_NAME " at CS%d (irq %d), 2 UARTs, 8 GPIOs\n"
++			"    eser%d, eser%d, gpiochip%d\n",
++			spi->chip_select, spi->irq,
++			pdata->uart_base, pdata->uart_base + 1,
++			pdata->gpio_base);
++
++	return 0;
++
++exit_uart1:
++	uart_remove_one_port(&sc16is7x2_uart_driver, &ts->channel[1].uart);
++
++exit_uart0:
++	uart_remove_one_port(&sc16is7x2_uart_driver, &ts->channel[0].uart);
++
++exit_destroy:
++	dev_set_drvdata(&spi->dev, NULL);
++	kfree(ts);
++//yasin_s
++	gpio_free(pdata->gpio_for_irq);
++	gpio_free(pdata->gpio_for_reset);
++//yasin_e
++	return ret;
++}
++
++static int sc16is7x2_remove(struct spi_device *spi)
++{
++	struct sc16is7x2_chip *ts = spi_get_drvdata(spi);
++	int ret;
++
++	if (ts == NULL)
++		return -ENODEV;
++
++	ret = uart_remove_one_port(&sc16is7x2_uart_driver, &ts->channel[0].uart);
++	if (ret)
++		return ret;
++
++	ret = uart_remove_one_port(&sc16is7x2_uart_driver, &ts->channel[1].uart);
++	if (ret)
++		return ret;
++
++#ifdef CONFIG_GPIOLIB
++	ret = gpiochip_remove(&ts->gpio);
++	if (ret)
++		return ret;
++#endif
++
++	kfree(ts);
++
++	return 0;
++}
++
++static struct uart_driver sc16is7x2_uart_driver = {
++	.owner          = THIS_MODULE,
++	.driver_name    = DRIVER_NAME,
++	.dev_name       = "eser",
++	.nr             = MAX_SC16IS7X2,
++};
++
++/* Spi driver data */
++static struct spi_driver sc16is7x2_spi_driver = {
++	.driver = {
++		.name		= DRIVER_NAME,
++		.bus		= &spi_bus_type,
++		.owner		= THIS_MODULE,
++	},
++	.probe		= sc16is7x2_probe,
++	.remove		= sc16is7x2_remove,
++};
++
++/* Driver init function */
++static int __init sc16is7x2_init(void)
++{
++	int ret = uart_register_driver(&sc16is7x2_uart_driver);
++	if (ret)
++		return ret;
++
++	return spi_register_driver(&sc16is7x2_spi_driver);
++}
++
++/* Driver exit function */
++static void __exit sc16is7x2_exit(void)
++{
++	spi_unregister_driver(&sc16is7x2_spi_driver);
++	uart_unregister_driver(&sc16is7x2_uart_driver);
++}
++
++/* register after spi postcore initcall and before
++ * subsys initcalls that may rely on these GPIOs
++ */
++subsys_initcall(sc16is7x2_init);
++module_exit(sc16is7x2_exit);
++
++MODULE_AUTHOR("Manuel Stahl");
++MODULE_LICENSE("GPL v2");
++MODULE_DESCRIPTION("SC16IS7x2 SPI based UART chip");
++MODULE_ALIAS("spi:" DRIVER_NAME);
+diff --git a/1860c/base/kernel/linux-3.10/include/linux/serial_sc16is7x2.h b/1860c/base/kernel/linux-3.10/include/linux/serial_sc16is7x2.h
+new file mode 100755
+index 0000000..fb281ce
+--- /dev/null
++++ b/1860c/base/kernel/linux-3.10/include/linux/serial_sc16is7x2.h
+@@ -0,0 +1,28 @@
++/*
++include/linux/serial_sc16is7x2.h
++*/
++
++#ifndef LINUX_SPI_SC16IS752_H
++#define LINUX_SPI_SC16IS752_H
++
++/* SC16IS7x2 SPI UART */
++#define PORT_SC16IS7X2	98
++
++#define SC16IS7X2_NR_GPIOS 8
++
++struct sc16is7x2_platform_data {
++	unsigned int	uartclk;
++	/* uart line number of the first channel */
++	unsigned int	uart_base;
++	/* number assigned to the first GPIO */
++	unsigned int	gpio_base;
++	char		*label;
++	/* list of GPIO names (array length = SC16IS7X2_NR_GPIOS) */
++	const char	*const *names;
++//yasin_s
++	unsigned int gpio_for_irq;
++	unsigned int gpio_for_reset;
++//yasin_e
++};
++
++#endif
+diff --git a/1860c/base/kernel/linux-3.10/make_zImage.sh b/1860c/base/kernel/linux-3.10/make_zImage.sh
+index 1f0999d..174ff03 100755
+--- a/1860c/base/kernel/linux-3.10/make_zImage.sh
++++ b/1860c/base/kernel/linux-3.10/make_zImage.sh
+@@ -102,5 +102,5 @@ else
+ 	exit 0
+ fi
+ 
+-make ARCH=arm CROSS_COMPILE=arm-eabi- -j8 -s ${KERNEL_CFLAGS}
++make ARCH=arm CROSS_COMPILE=arm-eabi- -j8 ${KERNEL_CFLAGS}
+ cp arch/arm/boot/zImage ./zImage
