@@ -1,8 +1,7 @@
 yasin:
 /media/yasin/Ext4_4/SPRD/sprdroid5.1_trunk/vendor/sprd/open-source/tools/utest
-sudo ./a.out write -n 0 -b 115200 -d 8
-sudo ./a.out read -n 0 -b 115200 -d 8
-
+sudo ./uart-test  read  -n /dev/ttyS3 -b 115200 -d 8
+sudo ./uart-test write  -n /dev/ttyS3 -b 115200 -d 8
 
 
 

@@ -99,15 +99,6 @@ static struct speed_map speeds[] = {
     {NULL, 0, 0}
 };
 
-static char uart_device[56] = {0};
-
-static char const* get_uart_name(int num)
-{
-    memset(uart_device, 0, sizeof(uart_device));
-    sprintf(uart_device, "%s%d", "/dev/ttyUSB", num);
-    return uart_device;
-}
-
 static unsigned long int baud_to_value(speed_t speed)
 {
     int i;
@@ -124,101 +115,16 @@ static int uart_open_port(const char *dev_name)
     int fd; /* File descriptor for the port */
     fd = open(dev_name, O_RDWR | O_NOCTTY | O_NDELAY);
     if (-1 == fd) {
-        printf("Unable to open uart port %s.\n", dev_name);
+        PRINT_ERR("Unable to open uart port %s.\n", dev_name);
         return -1;
     }
 
     if (isatty(fd) == 0) {
-        printf("This is not a tty device.\n");
+        PRINT_ERR("This is not a tty device.\n");
     }
 
     PRINT_INFO("\"%s\" opened (fd=%d)\n", dev_name, fd);
     return fd;
-}
-
-static void display_speed(struct termios* _termios)
-{
-    if (cfgetispeed(_termios) == 0 || cfgetispeed(_termios) == cfgetospeed(_termios))
-        printf("speed = %lu baud; \n", baud_to_value(cfgetospeed(_termios)));
-    else
-        printf("ispeed = %lu baud; ospeed = %lu baud; \n",
-               baud_to_value(cfgetispeed(_termios)),
-               baud_to_value(cfgetospeed(_termios)));
-}
-
-static void display_data_bit(struct termios* _termios)
-{
-    switch (_termios->c_cflag & CSIZE) {
-    case CS5:
-        printf("data bits = 5\n");
-        break;
-    case CS6:
-        printf("data bits = 6\n");
-        break;
-    case CS7:
-        printf("data bits = 7\n");
-        break;
-    default:
-    case CS8:
-        printf("data bits = 8\n");
-        break;
-    }
-}
-
-static void display_parity_bit(struct termios* _termios)
-{
-    if (_termios->c_cflag & PARENB)
-        if (_termios->c_cflag & PARODD)
-            printf("parity = odd\n");
-        else
-            printf("parity = even\n");
-    else
-        printf("parity = none\n");
-}
-
-static void display_stop_bit(struct termios* _termios)
-{
-    if (_termios->c_cflag & CSTOPB)
-        printf("stop bits = 2\n");
-    else
-        printf("stop bits = 1\n");
-}
-
-static void display_hardware_flow_control(struct termios* _termios)
-{
-    if (_termios->c_cflag & CRTSCTS)
-        printf("RTS/CTS is enabled.\n");
-    else
-        printf("RTS/CTS is disabled.\n");
-}
-
-static void display_soft_flow_control(struct termios* _termios)
-{
-    if ((_termios->c_cflag & IXOFF) || (_termios->c_cflag & IXON)) {
-        unsigned char stop_char = _termios->c_cc[VSTOP];
-        unsigned char start_char = _termios->c_cc[VSTART];
-
-        if(_termios->c_cflag & IXOFF)
-            printf("INBOUND XON/XOFF is enabled, XON = %2x, XOFF = %2x\n", start_char, stop_char);
-        else
-            printf("INBOUND XON/XOFF is disabled\n");
-
-        if (_termios->c_cflag & IXON)
-            printf("OUTBOUND XON/XOFF is enabled. XON = %2x, XOFF = %2x\n", start_char, stop_char);
-        else
-            printf("OUTBOUND XON/XOFF is disabled\n");
-    }
-}
-
-static void display_all(struct termios* _termios, char const *device_name)
-{
-    printf("----------------------------%s---------------------------\n", device_name);
-    display_speed(_termios);
-    display_data_bit(_termios);
-    display_parity_bit(_termios);
-    display_stop_bit(_termios);
-    display_hardware_flow_control(_termios);
-    display_soft_flow_control(_termios);
 }
 
 static int uart_set_port(int fd, int baud, int databits, char* parity,
@@ -228,7 +134,7 @@ static int uart_set_port(int fd, int baud, int databits, char* parity,
 
     ENTER;
     if (tcgetattr(fd, &new_ios) != 0) {
-        printf("Save the terminal error.\n");
+        PRINT_ERR("Save the terminal error.\n");
         return -1;
     }
 
@@ -254,10 +160,10 @@ static int uart_set_port(int fd, int baud, int databits, char* parity,
             new_ios.c_cflag |= CS8;
             break;
         default:
-            printf("databits set invalid option -%d\n", databits);
+            PRINT_INFO("databits set invalid option -%d\n", databits);
             break;
         }
-        printf("databits set - %d\n", databits);
+        PRINT_INFO("databits set - %d\n", databits);
     }
 
     if(0 != baud) {
@@ -287,10 +193,10 @@ static int uart_set_port(int fd, int baud, int databits, char* parity,
             cfsetospeed(&new_ios, B460800);
             break;
         default:
-            printf("parity set invalid option -%d\n", baud);
+            PRINT_INFO("parity set invalid option -%d\n", baud);
             break;
         }
-        printf("speed set - %d\n", baud);
+        PRINT_INFO("speed set - %d\n", baud);
     }
 
     if(NULL != parity) {
@@ -313,10 +219,10 @@ static int uart_set_port(int fd, int baud, int databits, char* parity,
             new_ios.c_iflag &= ~INPCK;
             break;
         default:
-            printf("parity set invalid option -%c\n", *parity);
+            PRINT_INFO("parity set invalid option -%c\n", *parity);
             break;
         }
-        printf("parity set - %c\n", *parity);
+        PRINT_INFO("parity set - %c\n", *parity);
     }
 
     if(NULL != flowcontrol) {
@@ -328,10 +234,10 @@ static int uart_set_port(int fd, int baud, int databits, char* parity,
             new_ios.c_iflag &= ~(IXON | IXOFF | IXANY);
             break;
         default:
-            printf("flow control set invalid option -%c\n", *flowcontrol);
+            PRINT_INFO("flow control set invalid option -%c\n", *flowcontrol);
             break;
         }
-        printf("flow control set - %c\n", *flowcontrol);
+        PRINT_INFO("flow control set - %c\n", *flowcontrol);
     }
 
     if (stopbits == 1)
@@ -358,108 +264,11 @@ static int uart_set_port(int fd, int baud, int databits, char* parity,
 
     tcflush(fd, TCIOFLUSH);
     if (tcsetattr(fd, TCSANOW, &new_ios) != 0) {
-        printf("Set the terminal error.\n");
+        PRINT_ERR("Set the terminal error.\n");
         tcsetattr(fd, TCSANOW, &old_ios);
         return -1;
     }
 
-    return 0;
-}
-
-static int do_list(int argc, char **argv)
-{
-    struct termios mode;
-    int fd, uartnum = -1;
-    int i, opt, nums = 3;
-
-    if ((opt = getopt(argc, argv, "n:")) != -1)
-        uartnum = atoi(optarg);
-
-    if (-1 != uartnum)
-        nums = 1;
-    else
-        uartnum = 0;
-
-    for (i = 0; i < nums; i++) {
-        const char* device_name = get_uart_name(uartnum);
-        if (0 == strcmp(device_name, "ukn")) {
-            printf("This is not a tty device.\n");
-            continue;
-        }
-
-        fd = uart_open_port(device_name);
-        if (-1 == fd)
-            continue;
-
-        if (tcgetattr(fd, &mode) != 0) {
-            printf("Save the terminal error.\n");
-            close(fd);
-
-            continue;
-        }
-
-        display_all(&mode, device_name);
-        uartnum++;
-
-        close(fd);
-    }
-
-    return 0;
-}
-
-static int do_set(int argc, char **argv)
-{
-    int opt, err, fd;
-    int uartnum = -1, baud = 0, databits = 0, stopbits = 0;
-    char* parity = NULL, *flowcontrol = NULL;
-
-    while ((opt = getopt(argc, argv, "n:b:p:d:s:f:")) != -1) {
-        switch (opt) {
-        case 'n':
-            uartnum = atoi(optarg);
-            break;
-        case 'b':
-            baud = atoi(optarg);
-            break;
-        case 'p':
-            parity = optarg;
-            break;
-        case 'd':
-            databits = atoi(optarg);
-            break;
-        case 's':
-            stopbits = atoi(optarg);
-            break;
-        case 'f':
-            flowcontrol = optarg;
-            break;
-        default:
-            printf("utest_uart set invalid option -%c\n", opt);
-            return -EINVAL;
-        }
-    }
-
-    if(-1 == uartnum)
-        return -EINVAL;
-
-    const char* device_name = get_uart_name(uartnum);
-    if (0 == strcmp(device_name, "ukn")) {
-        printf("This is not a tty device!\n");
-        return -EINVAL;
-    }
-
-    fd = uart_open_port(device_name);
-    if(-1 == fd)
-        return -1;
-
-    err = uart_set_port(fd, baud, databits, parity, stopbits, flowcontrol);
-    if (0 != err) {
-        printf("uart_set_port error!\n");
-        close(fd);
-        return -EINVAL;
-    }
-
-    close(fd);
     return 0;
 }
 
@@ -470,7 +279,8 @@ static int do_set(int argc, char **argv)
 static int uart_read_port(int fd)
 {
     unsigned char buf[BUF_SIZE];
-    int i, ret;
+    int ret = -1;
+    int i = 0;
     fd_set rfds;
     struct timeval timeout ;
 
@@ -486,11 +296,15 @@ static int uart_read_port(int fd)
             PRINT_ERR("select function return error!!!\n");
             return -EINVAL;
         } else if(ret) {
-            for(i = 0; i < BUF_SIZE; i++) {
-                buf[i] = '\0';
+            memset(buf, '\0', BUF_SIZE);
+            ret = read(fd, buf, BUF_SIZE);
+            if(ret > 0) {
+                for(i=0; i<ret; i++) {
+                    putchar(buf[i]);
+                }
+            } else {
+                PRINT_INFO("\n\nread return error, ret=%d\n\n", ret);
             }
-            ret = read(fd, buf, BUF_SIZE-1);
-            printf("%s", buf);
         } else {
             usleep(SELECT_DO_INTERVAL);
         }
@@ -501,7 +315,11 @@ static int uart_read_port(int fd)
 static int uart_write_port(int fd)
 {
     unsigned char buf[BUF_SIZE];
-    int i, ret;
+    unsigned char a = 'A' - 1;
+    int i = 0;
+    int pos = 0;
+    int count = 0;
+    int ret = -1;
     fd_set wfds;
     struct timeval timeout ;
 
@@ -517,12 +335,28 @@ static int uart_write_port(int fd)
             PRINT_ERR("select function return error!!!\n");
             return -EINVAL;
         } else if(ret) {
-            for(i = 0; i < BUF_SIZE; i++) {
-                buf[i] = '\0';
+            if(0 == pos) {
+                a++;
+                if(a > 'Z')
+                    a = 'A';
+                memset(buf, a, BUF_SIZE);
+                count++;
+                sprintf(buf, "---count=%08d---", count);
+                buf[BUF_SIZE-2] = '\r';
+                buf[BUF_SIZE-1] = '\n';
             }
-            //scanf("%s", buf);
-            //printf("sending: %s\n", buf);
-            ret = write(fd, "ls\r\n\r\n", BUF_SIZE-1);
+            ret = write(fd, buf+pos, BUF_SIZE-pos);
+            if(ret<0) {
+                PRINT_ERR("\n\nwrite return error, ret=%d\n\n", ret);
+            } else {
+                pos += ret;
+                if(pos >= BUF_SIZE) {
+                    PRINT_INFO("write success, count=%d\n", count);
+                    pos = 0;
+                } else {
+                    PRINT_INFO("write pending, count=%d pos=%d\n", count, pos);
+                }
+            }
         } else {
             usleep(SELECT_DO_INTERVAL);
         }
@@ -533,14 +367,15 @@ static int uart_write_port(int fd)
 static int do_read(int argc, char **argv)
 {
     int opt, err, fd;
-    int uartnum = -1, baud = 0, databits = 0, stopbits = 0;
-    char* parity = NULL, *flowcontrol = NULL;
+    int baud = 0, databits = 0, stopbits = 0;
+    char *parity = NULL, *flowcontrol = NULL, *uartname = NULL;
 
     ENTER;
     while ((opt = getopt(argc, argv, "n:b:p:d:s:f:")) != -1) {
         switch (opt) {
         case 'n':
-            uartnum = atoi(optarg);
+            uartname = optarg;
+            PRINT_INFO("%s\n", uartname);
             break;
         case 'b':
             baud = atoi(optarg);
@@ -558,34 +393,25 @@ static int do_read(int argc, char **argv)
             flowcontrol = optarg;
             break;
         default:
-            printf("utest_uart set invalid option -%c\n", opt);
+            PRINT_INFO("utest_uart set invalid option -%c\n", opt);
             return -EINVAL;
         }
     }
 
-    if(-1 == uartnum)
-        return -EINVAL;
-
-    const char* device_name = get_uart_name(uartnum);
-    if (0 == strcmp(device_name, "ukn")) {
-        printf("This is not a tty device!\n");
-        return -EINVAL;
-    }
-
-    fd = uart_open_port(device_name);
+    fd = uart_open_port(uartname);
     if(-1 == fd)
         return -1;
 
     err = uart_set_port(fd, baud, databits, parity, stopbits, flowcontrol);
     if (0 != err) {
-        printf("uart_set_port error!\n");
+        PRINT_ERR("uart_set_port error!\n");
         close(fd);
         return -EINVAL;
     }
 
     err = uart_read_port(fd);
     if (0 != err) {
-        printf("uart_set_port error!\n");
+        PRINT_ERR("uart_read_port error!\n");
         close(fd);
         return -EINVAL;
     }
@@ -597,14 +423,15 @@ static int do_read(int argc, char **argv)
 static int do_write(int argc, char **argv)
 {
     int opt, err, fd;
-    int uartnum = -1, baud = 0, databits = 0, stopbits = 0;
-    char* parity = NULL, *flowcontrol = NULL;
+    int baud = 0, databits = 0, stopbits = 0;
+    char *parity = NULL, *flowcontrol = NULL, *uartname = NULL;
 
     ENTER;
     while ((opt = getopt(argc, argv, "n:b:p:d:s:f:")) != -1) {
         switch (opt) {
         case 'n':
-            uartnum = atoi(optarg);
+            uartname = optarg;
+            PRINT_INFO("%s\n", uartname);
             break;
         case 'b':
             baud = atoi(optarg);
@@ -622,34 +449,25 @@ static int do_write(int argc, char **argv)
             flowcontrol = optarg;
             break;
         default:
-            printf("utest_uart set invalid option -%c\n", opt);
+            PRINT_INFO("utest_uart set invalid option -%c\n", opt);
             return -EINVAL;
         }
     }
 
-    if(-1 == uartnum)
-        return -EINVAL;
-
-    const char* device_name = get_uart_name(uartnum);
-    if (0 == strcmp(device_name, "ukn")) {
-        printf("This is not a tty device!\n");
-        return -EINVAL;
-    }
-
-    fd = uart_open_port(device_name);
+    fd = uart_open_port(uartname);
     if(-1 == fd)
         return -1;
 
     err = uart_set_port(fd, baud, databits, parity, stopbits, flowcontrol);
     if (0 != err) {
-        printf("uart_set_port error!\n");
+        PRINT_ERR("uart_set_port error!\n");
         close(fd);
         return -EINVAL;
     }
 
     err = uart_write_port(fd);
     if (0 != err) {
-        printf("uart_set_port error!\n");
+        PRINT_ERR("uart_write_port error!\n");
         close(fd);
         return -EINVAL;
     }
@@ -661,44 +479,38 @@ static int do_write(int argc, char **argv)
 static void usage(void)
 {
     printf("Usage:\n");
-    printf("utest_uart list [-n uarnum]\n");
-    printf("utest_uart set -n uartnum [-b baud][-p parity][-d databits][-s stopbits][-f flowcontrol]\n");
-    printf("utest_uart read -n uartnum [-b baud][-p parity][-d databits][-s stopbits][-f flowcontrol]\n");
-    printf("example for read:  \"sudo ./a.out read -n 0 -b 115200 -d 8\"\n");
+    printf("utest_uart read  -n DeviceName [-b Baud][-p Parity][-d DataBits][-s StopBits][-f FlowControl]\n");
+    printf("utest_uart write -n DeviceName [-b Baud][-p Parity][-d DataBits][-s StopBits][-f FlowControl]\n");
+    printf("example for read:   \" sudo ./uart-test  read  -n /dev/ttyS3 -b 115200 -d 8 \"\n");
+    printf("example for write:  \" sudo ./uart-test  write -n /dev/ttyS3 -b 115200 -d 8 \"\n");
 }
 
 int main(int argc, char **argv)
 {
     char *cmd;
-    int rval = -EINVAL;
+    int ret = -EINVAL;
     printf("----------------------------utest_uart begin-----------------------\n");
     if (argc < 2) {
         usage();
-        return rval;
+        return ret;
     }
 
     cmd = argv[1];
     argc--;
     argv++;
 
-    printf("utest_uart -- %s \n", cmd);
-    if (strcmp(cmd, "list") == 0)
-        rval = do_list(argc, argv);
-    else if (strcmp(cmd, "set") == 0)
-        rval = do_set(argc, argv);
-    else if (strcmp(cmd, "read") == 0)
-        rval = do_read(argc, argv);
+    PRINT_INFO("utest_uart -- %s \n", cmd);
+    if (strcmp(cmd, "read") == 0)
+        ret = do_read(argc, argv);
     else if (strcmp(cmd, "write") == 0)
-        rval = do_write(argc, argv);
+        ret = do_write(argc, argv);
     else
         usage();
 
-    if (rval == -EINVAL)
+    if (ret == -EINVAL)
         usage();
 
     printf("----------------------------utest_uart end-------------------------\n");
-    return rval;
+    return ret;
 }
-
-
 

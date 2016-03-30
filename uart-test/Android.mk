@@ -2,9 +2,9 @@
 LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
-LOCAL_MODULE:= utest_uart
+LOCAL_MODULE:= uart-test
 LOCAL_MODULE_TAGS:= debug
 LOCAL_MODULE_PATH:= $(TARGET_OUT_OPTIONAL_EXECUTABLES)
-LOCAL_SRC_FILES:= utest_uart.c
+LOCAL_SRC_FILES:= uart-test.c
 include $(BUILD_EXECUTABLE)
 
