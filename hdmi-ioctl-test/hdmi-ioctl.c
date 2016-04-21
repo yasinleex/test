@@ -45,12 +45,13 @@ do{ printf("[sii902xA_ERR][%04d][%s] " format, __LINE__, __func__, ## x); }while
 
 //ioctl
 #define sii902xA_IOCTL (0x99)
-#define sii902xA_GET_RAW_EDID       _IOR(sii902xA_IOCTL, 0x1, unsigned long)
-#define sii902xA_GET_TIMING_DESC    _IOR(sii902xA_IOCTL, 0x2, unsigned long)
-#define sii902xA_GET_TIMING_BITMAP  _IOR(sii902xA_IOCTL, 0x3, unsigned long)
-#define sii902xA_SET_VIDEO          _IOW(sii902xA_IOCTL, 0x4, unsigned long)
-#define sii902xA_SET_AUDIO          _IOW(sii902xA_IOCTL, 0x5, unsigned long)
-#define sii902xA_START              _IOW(sii902xA_IOCTL, 0x6, unsigned long)
+#define sii902xA_GET_RAW_EDID_BLOCK_0  _IOR(sii902xA_IOCTL, 0x1, unsigned long)
+#define sii902xA_GET_TIMING_DESC       _IOR(sii902xA_IOCTL, 0x2, unsigned long)
+#define sii902xA_GET_TIMING_BITMAP     _IOR(sii902xA_IOCTL, 0x3, unsigned long)
+#define sii902xA_SET_VIDEO             _IOW(sii902xA_IOCTL, 0x4, unsigned long)
+#define sii902xA_SET_AUDIO             _IOW(sii902xA_IOCTL, 0x5, unsigned long)
+#define sii902xA_START                 _IOW(sii902xA_IOCTL, 0x6, unsigned long)
+#define sii902xA_GET_RAW_EDID_BLOCK_1  _IOR(sii902xA_IOCTL, 0x7, unsigned long)
 
 #define DEV_NAME "/dev/sii902xA"
 
@@ -113,7 +114,7 @@ void dev_close(void)
 	}
 }
 
-int get_raw_edid(unsigned char  *edid, int size)
+int get_raw_edid_0(unsigned char  *edid, int size)
 {
 	ENTER;
 	if (fd < 0) {
@@ -125,14 +126,47 @@ int get_raw_edid(unsigned char  *edid, int size)
 		return -1;
 	}
 
-	if (ioctl(fd, sii902xA_GET_RAW_EDID, edid) < 0) {
+	if (ioctl(fd, sii902xA_GET_RAW_EDID_BLOCK_0, edid) < 0) {
 		PRINT_ERR("ioctl error\n");
 		return -1;
 	}
 
 	{
 		int i = 0;
-		PRINT_INFO("print EDID Data:\n");
+		PRINT_INFO("print EDID Data: sii902xA_GET_RAW_EDID_BLOCK_0\n");
+		printf("=============EDID Data===============\n");
+		for(i=0; i<size; i++)
+		{
+			printf(" %02X", edid[i]);
+			if((i+1)%16 == 0)
+			printf("\n");
+		}
+		printf("=============EDID Data===============\n");
+	}
+
+	return 0;
+}
+
+int get_raw_edid_1(unsigned char  *edid, int size)
+{
+	ENTER;
+	if (fd < 0) {
+		PRINT_ERR("Device file is not opened\n");
+		return -1;
+	}
+	if (size != 128) {
+		PRINT_ERR("edid data must be 128 BYTE\n");
+		return -1;
+	}
+
+	if (ioctl(fd, sii902xA_GET_RAW_EDID_BLOCK_1, edid) < 0) {
+		PRINT_ERR("ioctl error\n");
+		return -1;
+	}
+
+	{
+		int i = 0;
+		PRINT_INFO("print EDID Data: sii902xA_GET_RAW_EDID_BLOCK_1\n");
 		printf("=============EDID Data===============\n");
 		for(i=0; i<size; i++)
 		{
@@ -206,7 +240,7 @@ int get_timing_bitmap(struct timing_bitmap *timing_bmp)
 	return 0;
 }
 
-int set_video(int *video_mode)
+int set_video(char *video_mode)
 {
 
 	ENTER;
@@ -222,7 +256,6 @@ int set_video(int *video_mode)
 
 	return 0;
 }
-
 
 int hdmi_start(void)
 {
@@ -245,7 +278,7 @@ int main(void)
 {
 	int choice = 0;
 	int ret = -1;
-	int video_mode = 0;
+	char video_mode = 0;
 
 	ret = dev_open();
 	if(ret < 0) {
@@ -256,12 +289,13 @@ int main(void)
 	while(1){
 		printf("\n\n\n=====================================\n");
 		printf("    0. Exit\n");
-		printf("    1. sii902xA_GET_RAW_EDID\n");
-		printf("    2. sii902xA_GET_TIMING_DESC\n");
-		printf("    3. sii902xA_GET_TIMING_BITMAP\n");
-		printf("    4. sii902xA_SET_VIDEO\n");
-		printf("    5. sii902xA_SET_AUDIO\n");
-		printf("    6. sii902xA_START\n");
+		printf("    1. sii902xA_GET_RAW_EDID_BLOCK_0\n");
+		printf("    2. sii902xA_GET_RAW_EDID_BLOCK_1\n");
+		printf("    3. sii902xA_GET_TIMING_DESC\n");
+		printf("    4. sii902xA_GET_TIMING_BITMAP\n");
+		printf("    5. sii902xA_SET_VIDEO\n");
+		printf("    6. sii902xA_SET_AUDIO\n");
+		printf("    7. sii902xA_START\n");
 		printf("=====================================\n");
 		printf("please input your choice number: ");
 		scanf("%d", &choice);
@@ -272,22 +306,29 @@ int main(void)
 				dev_close();
 				return 0;
 			case 1:
-				get_raw_edid(edid, 128);
+				get_raw_edid_0(edid, 128);
 				break;
 			case 2:
-				get_timing_desc(&std_timing);
+				get_raw_edid_1(edid, 128);
 				break;
 			case 3:
-				get_timing_bitmap(&timing_bmp);
+				get_timing_desc(&std_timing);
 				break;
 			case 4:
+				get_timing_bitmap(&timing_bmp);
+				break;
+			case 5:
 				printf("    please input video mode number: ");
 				scanf("%d", &video_mode);
 				set_video(&video_mode);
 				break;
-			case 5:
+			case 6:
+				PRINT_INFO("sii902xA_SET_AUDIO\n");
+				break;
+			case 7:
 				hdmi_start();
 				break;
+
 			default:
 				break;		
 		};
