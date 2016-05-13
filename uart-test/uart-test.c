@@ -272,7 +272,7 @@ static int uart_set_port(int fd, int baud, int databits, char* parity,
     return 0;
 }
 
-#define BUF_SIZE 512
+#define BUF_SIZE 1
 #define SELECT_DO_INTERVAL 50000
 #define SELECT_BLOCK_US 0
 
@@ -297,11 +297,13 @@ static int uart_read_port(int fd)
             return -EINVAL;
         } else if(ret) {
             memset(buf, '\0', BUF_SIZE);
+            printf("invoking read....(ret=%d)\n", ret);
             ret = read(fd, buf, BUF_SIZE);
             if(ret > 0) {
                 for(i=0; i<ret; i++) {
                     putchar(buf[i]);
                 }
+                printf("\n");
             } else {
                 PRINT_INFO("\n\nread return error, ret=%d\n\n", ret);
             }
@@ -335,16 +337,19 @@ static int uart_write_port(int fd)
             PRINT_ERR("select function return error!!!\n");
             return -EINVAL;
         } else if(ret) {
+            printf("\npress enter key to continue\n");
+            getchar();
             if(0 == pos) {
                 a++;
                 if(a > 'Z')
                     a = 'A';
                 memset(buf, a, BUF_SIZE);
                 count++;
-                sprintf(buf, "---count=%08d---", count);
-                buf[BUF_SIZE-2] = '\r';
-                buf[BUF_SIZE-1] = '\n';
+                //sprintf(buf, "---count=%08d---", count);
+                //buf[BUF_SIZE-2] = '\r';
+                //buf[BUF_SIZE-1] = '\n';
             }
+            printf("writing:...%s\n", buf);
             ret = write(fd, buf+pos, BUF_SIZE-pos);
             if(ret<0) {
                 PRINT_ERR("\n\nwrite return error, ret=%d\n\n", ret);
