@@ -54,7 +54,6 @@ pthread_t preview_thd;
 
 char *mISPBufferBase = 0;
 int uvc_cam_fd = -1;
-int m_cam_index = 0;
 int m_preview_width = 320;
 int m_preview_height = 240;
 int m_preview_buffer_cnt = MAX_PREVIEW_BUF_COUNT;
@@ -101,6 +100,9 @@ static int getPreviewFrameSize()
     return frame_size;
 }
 
+/*
+检查设备的支持能力
+*/
 static int v4l2_querycap(int fd)
 {
     struct v4l2_capability capability;
@@ -140,21 +142,51 @@ static int v4l2_querycap(int fd)
 的数量和属性。VIDIOC_ENUMINPUT 会返回v4l2_input结构体，也会返回被查询的视频输
 入设备的状态信息。
 */
-static const __u8* v4l2_enuminput(int fd, int index)
+static int v4l2_enuminput(int fd, int index)
 {
-    static struct v4l2_input input;
-    input.index = index;
+    struct v4l2_input input;
+    int current_index = 0;
+    int ret = -1;
 
-    if (ioctl(fd, VIDIOC_ENUMINPUT, &input) != 0) {
-        PRINT_ERR("VIDIOC_ENUMINPUT failed, no matching input index found\n");
-        return NULL;
+    PRINT_INFO("enum video inputs from index_%d\n", index);
+    current_index = index;
+
+    while(current_index < 255) {
+        memset(&input, 0, sizeof(struct v4l2_input));
+        input.index = current_index;
+        ret = ioctl(fd, VIDIOC_ENUMINPUT, &input);
+        if (0 != ret) {
+            PRINT_INFO("VIDIOC_ENUMINPUT failed when enum index_%d, stop enum inputs\n", current_index);
+            break;
+        } else {
+            PRINT_INFO("VIDIOC_ENUMINPUT success when enum index_%d\n", current_index);
+            PRINT_INFO("input.index=%d\n", input.index);
+            PRINT_INFO("input.name=\"%s\"\n", input.name);
+            PRINT_INFO("input.type=0x%08X\n", input.type);
+            PRINT_INFO("input.audioset=0x%08X\n", input.audioset);
+            PRINT_INFO("input.tuner=0x%08X\n", input.tuner);
+            PRINT_INFO("input.std=0x%016lX\n", (unsigned long)input.std);
+            PRINT_INFO("input.status=0x%08X\n", input.status);
+            PRINT_INFO("input.capabilities=0x%08X\n", input.capabilities);
+            current_index++;
+        }
+    }
+
+    if(current_index > index) {
+        PRINT_INFO("enum video inputs from index_%d success, %d inputs enumerated\n",
+            index, current_index - index);
+        return 0;
     } else {
-        PRINT_INFO("VIDIOC_ENUMINPUT success, input.index=%d, input.name=\"%s\"\n",
-                   input.index, input.name);
-        return input.name;
+        PRINT_ERR("enum video inputs from index_%d failed, %d inputs enumerated\n",
+            index, current_index - index);
+        return ret;
     }
 }
 
+/*
+VIDIOC_G_INPUT和VIDIOC_G_OUTPUT 将会返回当前视频输入或输出的索引。
+应用程序可以通过VIDIOC_S_INPUT和VIDIOC_S_OUTPUT 来选择不同输入或输出。
+*/
 static int v4l2_s_input(int fd, int index)
 {
     struct v4l2_input input;
@@ -407,6 +439,7 @@ static int v4l2_querybuf(int fd, enum v4l2_buf_type type, int buffer_cnt)
     return 0;
 }
 
+//枚举每一种帧大小下的帧率
 int enum_frame_intervals(int fd, __u32 pixfmt, __u32 width, __u32 height)
 {
     int ret = -1;
@@ -446,38 +479,47 @@ int enum_frame_intervals(int fd, __u32 pixfmt, __u32 width, __u32 height)
     return 0;
 }
 
-
-int enum_frame_sizes(int fd, __u32 pixfmt)
+//枚举设备支持的所有帧大小格式
+int enum_frame_sizes(int fd, __u32 pixelformat)
 {
     int ret = -1;
     struct v4l2_frmsizeenum fsize;
 
     memset(&fsize, 0, sizeof(fsize));
     fsize.index = 0;
-    fsize.pixel_format = pixfmt;
+    fsize.pixel_format = pixelformat;
+
+    PRINT_INFO("enum frame size for \'%c%c%c%c\' from fsize.index=%d\n",
+        fsize.pixel_format & 0xFF, (fsize.pixel_format >> 8 ) & 0xFF,
+        (fsize.pixel_format >> 16) & 0xFF, (fsize.pixel_format >> 24) & 0xFF,
+        fsize.index);
+
     while ((ret = ioctl(fd, VIDIOC_ENUM_FRAMESIZES, &fsize)) == 0) {
-        if (fsize.type == V4L2_FRMSIZE_TYPE_DISCRETE) {
-            PRINT_INFO("    fsize.discrete.width=%u, fsize.discrete.height=%u\n",
+        if (V4L2_FRMSIZE_TYPE_DISCRETE == fsize.type) {
+            PRINT_INFO("    V4L2_FRMSIZE_TYPE_DISCRETE:\n");
+            PRINT_INFO("    fsize.index=%u, fsize.discrete.width=%u, fsize.discrete.height=%u\n",
+                       fsize.index, fsize.discrete.width, fsize.discrete.height);
+            ret = enum_frame_intervals(fd, fsize.pixel_format,
                        fsize.discrete.width, fsize.discrete.height);
-            ret = enum_frame_intervals(fd, pixfmt,
-                                       fsize.discrete.width, fsize.discrete.height);
             if (ret != 0)
-                printf("  Unable to enumerate frame sizes.\n");
-        } else if (fsize.type == V4L2_FRMSIZE_TYPE_CONTINUOUS) {
-            printf("{ continuous: min { width = %u, height = %u } .. "
+                PRINT_ERR("Unable to enumerate frame sizes.\n");
+        } else if (V4L2_FRMSIZE_TYPE_CONTINUOUS == fsize.type) {
+            PRINT_INFO("    V4L2_FRMSIZE_TYPE_CONTINUOUS:\n");
+            PRINT_INFO("    { continuous: min { width = %u, height = %u } .. "
                    "max { width = %u, height = %u } }\n",
                    fsize.stepwise.min_width, fsize.stepwise.min_height,
                    fsize.stepwise.max_width, fsize.stepwise.max_height);
-            printf("  Refusing to enumerate frame intervals.\n");
+            PRINT_INFO("  Refusing to enumerate frame intervals.\n");
             break;
-        } else if (fsize.type == V4L2_FRMSIZE_TYPE_STEPWISE) {
-            printf("{ stepwise: min { width = %u, height = %u } .. "
+        } else if (V4L2_FRMSIZE_TYPE_STEPWISE == fsize.type) {
+            PRINT_INFO("    V4L2_FRMSIZE_TYPE_STEPWISE:\n");
+            PRINT_INFO("    { stepwise: min { width = %u, height = %u } .. "
                    "max { width = %u, height = %u } / "
                    "stepsize { width = %u, height = %u } }\n",
                    fsize.stepwise.min_width, fsize.stepwise.min_height,
                    fsize.stepwise.max_width, fsize.stepwise.max_height,
                    fsize.stepwise.step_width, fsize.stepwise.step_height);
-            printf("  Refusing to enumerate frame intervals.\n");
+            PRINT_INFO("  Refusing to enumerate frame intervals.\n");
             break;
         }
         fsize.index++;
@@ -490,26 +532,30 @@ int enum_frame_sizes(int fd, __u32 pixfmt)
     return 0;
 }
 
+//枚举设备支持的帧格式
 int enum_frame_formats(int fd)
 {
     int ret = -1;
-    struct v4l2_fmtdesc fmt;
+    struct v4l2_fmtdesc fmtdesc;
 
-    memset(&fmt, 0, sizeof(fmt));
-    fmt.index = 0;
-    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    memset(&fmtdesc, 0, sizeof(fmtdesc));
+    fmtdesc.index = 0;
+    fmtdesc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-    while ((ret = ioctl(fd, VIDIOC_ENUM_FMT, &fmt)) == 0) {
+    while ((ret = ioctl(fd, VIDIOC_ENUM_FMT, &fmtdesc)) == 0) {
         PRINT_INFO("VIDIOC_ENUM_FMT success\n");
-        fmt.index++;
         PRINT_INFO("==================================================================\n");
-        PRINT_INFO("fmt.pixelformat=\'%c%c%c%c\', fmt.description=\'%s\', fmt.index=%d\n",
-                   fmt.pixelformat & 0xFF, (fmt.pixelformat >> 8 ) & 0xFF,
-                   (fmt.pixelformat >> 16) & 0xFF, (fmt.pixelformat >> 24) & 0xFF,
-                   fmt.description, fmt.index);
-        ret = enum_frame_sizes(fd, fmt.pixelformat);
+        PRINT_INFO("fmtdesc.index=%d, fmtdesc.description=\'%s\', fmtdesc.pixelformat=\'%c%c%c%c\'\n",
+                   fmtdesc.index,
+                   fmtdesc.description,
+                   fmtdesc.pixelformat & 0xFF, (fmtdesc.pixelformat >> 8 ) & 0xFF,
+                   (fmtdesc.pixelformat >> 16) & 0xFF, (fmtdesc.pixelformat >> 24) & 0xFF);
+
+        ret = enum_frame_sizes(fd, fmtdesc.pixelformat);
         if (ret != 0)
             PRINT_ERR("enum_frame_sizes failed, Unable to enumerate frame sizes, ret=%d\n", ret);
+
+        fmtdesc.index++;
     }
 
     return 0;
@@ -518,13 +564,12 @@ int enum_frame_formats(int fd)
 
 int uvc_cam_init()
 {
-    char *sensorName = NULL;
-    int ret = 0;
-
-    struct v4l2_format fmt;
+    int ret = -1;
+    struct v4l2_format format;
 
     ENTER;
 
+    //打开设备
     uvc_cam_fd = open(UVC_CAM_NAME, O_RDWR | O_NONBLOCK, 0);
     if (uvc_cam_fd < 0) {
         PRINT_ERR("open \"%s\" failed, ret=%d\n", UVC_CAM_NAME, uvc_cam_fd);
@@ -540,46 +585,42 @@ int uvc_cam_init()
         return ret;
     }
 
-    //枚举
-    sensorName = (char*)v4l2_enuminput(uvc_cam_fd, m_cam_index);
-    if (sensorName == NULL) {
+    //检查并从0开始枚举设备能够支持的inputs数量
+    ret = v4l2_enuminput(uvc_cam_fd, 0);
+    if (ret < 0) {
         PRINT_ERR("v4l2_enuminput failed\n");
-        return -1;
-    } else {
-        PRINT_INFO("camera sensor name is \"%s\"\n", sensorName);
+        return ret;
     }
 
-    ret = v4l2_s_input(uvc_cam_fd, m_cam_index);
+    //选择input index 0
+    ret = v4l2_s_input(uvc_cam_fd, 0);
     if (ret < 0) {
         PRINT_ERR("v4l2_s_input failed, ret=%d\n", ret);
         return ret;
     }
 
-    // Enumerate the supported formats to check whether the requested one
+    //枚举设备支持的帧格式、帧大小、帧率
     if(enum_frame_formats(uvc_cam_fd)) {
         PRINT_ERR("enum_frame_formats failed, Unable to enumerate frame formats\n");
         return -1;
     }
-    int i = 0 ;
 
-    memset(&fmt, 0, sizeof(fmt));
-    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
-    fmt.fmt.pix.width = m_preview_width;
-    fmt.fmt.pix.height = m_preview_height;
-    fmt.fmt.pix.field = V4L2_FIELD_ANY;
+    memset(&format, 0, sizeof(format));
+    format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    format.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+    format.fmt.pix.width = m_preview_width;
+    format.fmt.pix.height = m_preview_height;
+    format.fmt.pix.field = V4L2_FIELD_ANY;
 
-    if (ioctl(uvc_cam_fd, VIDIOC_S_FMT, &fmt) < 0) {
+    if (ioctl(uvc_cam_fd, VIDIOC_S_FMT, &format) < 0) {
         PRINT_ERR("VIDIOC_S_FMT failed\n");
         return -1;
     }
 
-    if ((fmt.fmt.pix.width != m_preview_width) ||
-            (fmt.fmt.pix.height != m_preview_height)) {
+    if ((format.fmt.pix.width != m_preview_width) ||
+            (format.fmt.pix.height != m_preview_height)) {
         printf("  Frame size:   %ux%u (requested size %ux%u is not supported by device)\n",
-               fmt.fmt.pix.width, fmt.fmt.pix.height, m_preview_width, m_preview_height);
-        /* look the format is not part of the deal ??? */
-        //vd->formatIn = vd->fmt.fmt.pix.pixelformat;
+               format.fmt.pix.width, format.fmt.pix.height, m_preview_width, m_preview_height);
     } else {
         printf("  Frame size:   %dx%d\n", m_preview_width, m_preview_height);
     }
@@ -635,6 +676,8 @@ int uvc_cam_init()
         printf("VIDIOC_REQBUFS failed\n");
         return -1;
     }
+
+    int i = 0 ;
 
     // Queue the buffers.
     for (i = 0; i < req.count; i++) {
