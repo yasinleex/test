@@ -1,0 +1,239 @@
+adb root
+adb remount
+adb push zImage /data
+adb shell "dd if=/data/zImage of=/dev/block/platform/comip-mmc.1/by-name/kernel"
+adb reboot
+
+
+adb root
+adb push zImage /data
+adb push zzw_v1_0.dtb /data
+adb shell "dd if=/data/zImage of=/dev/block/platform/comip-mmc.1/by-name/kernel"
+adb shell "dd if=/data/zzw_v1_0.dtb of=/dev/block/platform/comip-mmc.1/by-name/lcboot"
+
+
+
+adb root
+adb push boot.img /data
+adb shell "dd if=/data/boot.img of=/dev/block/platform/7824900.sdhci/by-name/boot"
+
+adb shell "dd if=/data/boot.img of=/dev/block/platform/7824900.sdhci/by-name/boot"
+adb shell "dd if=/data/emmc_appsboot.mbn of=/dev/block/platform/7824900.sdhci/by-name/aboot"
+
+
+adb root
+adb wait-for-device
+adb remount
+adb wait-for-device
+adb push boot.img /data/
+adb wait-for-device
+adb push emmc_appsboot.mbn /data/
+adb wait-for-device
+adb shell "dd if=/data/boot.img of=/dev/block/platform/7824900.sdhci/by-name/boot"
+adb wait-for-device
+adb shell "dd if=/data/emmc_appsboot.mbn of=/dev/block/platform/7824900.sdhci/by-name/aboot"
+adb wait-for-device
+
+
+root@H958:/ # input keyevent 223    休眠                                            
+root@H958:/ # input keyevent 224     唤醒
+root@H958:/ # input keyevent 4     返回
+
+
+
+
+
+adb reboot bootloader
+fastboot flash boot boot.img
+fastboot flash aboot emmc_appsboot.mbn
+fastboot reboot
+
+adb shell "echo 0 0 0 0 > /proc/sys/kernel/printk"
+adb shell "echo 9 9 9 9 > /proc/sys/kernel/printk"
+adb shell "cat /proc/sys/kernel/printk"
+
+adb shell "uart-test-cont read  -n /dev/ttysWK0 -b 9600 -d 8"
+
+adb shell "uart-test-cont read  -n /dev/ttysWK1 -b 115200 -d 8"
+adb shell "uart-test-cont write  -n /dev/ttysWK1 -b 115200 -d 8"
+
+watch -n 1 "adb shell cat /sys/kernel/debug/gpio | grep wk2204_irq"
+
+adb shell "echo bb20 > /sys/mdss_spi/reg_set"
+
+
+adb shell "cat /sys/kernel/debug/gpip"
+
+adb shell input keyevent 4  返回
+
+adb shell logcat | grep FPS
+
+shell@H958:/sys/bus/spi/devices/spi3.0 # cat modalias                          
+spi:mdss-spi-client
+shell@H958:/sys/bus/spi/devices/spi3.0 # 
+
+
+
+adb shell "cat /sys/class/input/input8/enable"
+adb shell "cat /sys/class/input/input8/delay"
+adb shell "echo 100 > /sys/class/input/input8/delay"
+adb shell "echo 1 > /sys/class/input/input8/enable"
+adb shell "echo 0 > /sys/class/input/input8/enable"
+
+adb shell "cat /sys/class/input/input8/temperature"
+adb shell "cat /sys/class/misc/tmp103/temperature"
+
+
+
+echo 255 > brightness && input keyevent 26
+
+
+
+adb shell "screencap -p /sdcard/aa.png" && adb pull /sdcard/aa.png
+
+adb shell "uart-test write -n /dev/ttysWK1 -b 115200 -d 8"
+adb shell "uart-test read -n /dev/ttysWK1 -b 115200 -d 8"
+
+//////////////////////////////////////////////////////////////////////    MTK debug
+cat /sys/devices/platform/10005000.pinctrl/mt_gpio
+
+adb shell "echo 1 > /sys/class/misc/aw9523_4/dbg_en"
+
+adb shell "echo 1401 > /sys/class/misc/aw9523_4/gpio_test"
+
+
+
+                                                        yasin@Dtt:~/share-F$ fastboot flash boot boot.img
+< waiting for device >
+target reported max download size of 134217728 bytes
+sending 'boot' (12834 KB)...
+OKAY [  3.955s]
+writing 'boot'...
+FAILED (remote: not allowed in locked state)
+finished. total time: 3.966s
+                                                        yasin@Dtt:~/share-F$ fastboot oem unlock
+...
+(bootloader) Start unlock flow
+
+OKAY [  3.856s]
+finished. total time: 3.856s
+yasin@Dtt:~/share-F$ 
+yasin@Dtt:~/share-F$ 
+yasin@Dtt:~/share-F$ 
+                                                        yasin@Dtt:~/share-F$ fastboot flash boot boot.img
+target reported max download size of 134217728 bytes
+sending 'boot' (12834 KB)...
+OKAY [  4.061s]
+writing 'boot'...
+OKAY [  0.183s]
+finished. total time: 4.244s
+yasin@Dtt:~/share-F$ 
+
+
+
+
+
+
+adb shell "echo 0 0 0 0 > /proc/sys/kernel/printk"
+
+echo 0 > /sys/class/misc/modem_ap2cp/ap2cp_usb_switch
+echo 1 > /sys/class/misc/modem_ap2cp/ap2cp_usb_switch
+echo 1 > /sys/class/misc/modem_ap2cp/ap2cp_rst
+echo 0 > /sys/class/misc/modem_ap2cp/ap2cp_rst
+echo 1 > /sys/class/misc/modem_ap2cp/ap2cp_rst
+lsusb
+
+
+
+ 
+adb push mii.ko  /system/lib/modules/mii.ko  
+adb push usbnet.ko  /system/lib/modules/usbnet.ko  
+adb push libphy.ko /system/lib/modules/libphy.ko 
+adb push cdc_ether.ko /system/lib/modules/cdc_ether.ko 
+adb push cdc_subset.ko /system/lib/modules/cdc_subset.ko 
+adb push of_mdio.ko /system/lib/modules/of_mdio.ko 
+adb push zaurus.ko /system/lib/modules/zaurus.ko 
+adb push net1080.ko /system/lib/modules/net1080.ko
+adb push cdc_ncm.ko  /system/lib/modules/cdc_ncm.ko  
+adb push ax88179_178a.ko /system/lib/modules/ax88179_178a.ko 
+adb push asix.ko /system/lib/modules/asix.ko         
+adb push hw_cdc_driver.ko /system/lib/modules/hw_cdc_driver.ko  
+
+
+adb shell "chmod 0777 /system/lib/modules/*"
+
+顺序加载
+adb shell "insmod /system/lib/modules/mii.ko"  
+adb shell "insmod /system/lib/modules/usbnet.ko"  
+adb shell "insmod /system/lib/modules/libphy.ko" 
+adb shell "insmod /system/lib/modules/cdc_ether.ko" 
+adb shell "insmod /system/lib/modules/cdc_subset.ko" 
+adb shell "insmod /system/lib/modules/of_mdio.ko" 
+adb shell "insmod /system/lib/modules/zaurus.ko" 
+adb shell "insmod /system/lib/modules/net1080.ko"
+adb shell "insmod /system/lib/modules/cdc_ncm.ko"  
+adb shell "insmod /system/lib/modules/ax88179_178a.ko" 
+adb shell "insmod /system/lib/modules/asix.ko"         
+adb shell "insmod /system/lib/modules/hw_cdc_driver.ko" 
+
+
+[  420.151530] .(2)[176:kworker/2:1]cdc_ether 1-1.1:1.0 eth0: register 'cdc_ether' at usb-musb-hdrc-1.1, CDC Ethernet Device, 00:a0:c6:00:00:00
+[  420.215580] .(2)[176:kworker/2:1]usb 1-1.1: GSM modem (1-port) converter now attached to ttyUSB0
+[  420.250833] .(2)[176:kworker/2:1]usb 1-1.1: GSM modem (1-port) converter now attached to ttyUSB1
+[  420.270474] .(2)[176:kworker/2:1]usb 1-1.1: GSM modem (1-port) converter now attached to ttyUSB2
+
+
+t100p:/system/lib/modules # ifconfig -a 
+eth0      Link encap:Ethernet  HWaddr 00:a0:c6:00:00:00
+          inet6 addr: fe80::2a0:c6ff:fe00:0/64 Scope: Link
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0 
+          TX packets:18 errors:0 dropped:0 overruns:0 carrier:0 
+          collisions:0 txqueuelen:1000 
+          RX bytes:0 TX bytes:3600 
+
+
+
+ 
+    
+setenforce 0
+
+[  437.965211] type=1400 audit(2125.569:13): avc: denied { read write } for pid=5371 comm="uart-test-cont" name="ttysWK0" dev="tmpfs" ino=6601 scontext=u:r:shell:s0 tcontext=u:object_r:location_serial_device:s0 tclass=chr_file permissive=0
+ 
+
+
+
+root@mplus_zzw:/dev/graphics # ls
+fb0
+galcore_smmu
+root@mplus_zzw:/dev/graphics # 
+
+
+root@mplus_zzw:/sys/class/graphics/fb0 # cat *
+32
+29:0
+/system/bin/sh: cat: device: Is a directory
+U:480x800p-0
+U:480x800p-56
+COMIP
+0,1600
+/system/bin/sh: cat: power: Is a directory
+0
+0
+1920
+/system/bin/sh: cat: subsystem: Is a directory
+MAJOR=29
+MINOR=0
+DEVNAME=fb0
+480,2400
+
+
+
+adb shell "cat /sys/kernel/debug/pinctrl/pinctrl-maps"
+聯芯这个傻逼的pinctrl必须在代码中显式调用，显式调用后才能在上述节点看到对应的配置信息，如何配置，参考spi-lcd-st7789v2.c的probe
+yasin@Dtt:~$ adb shell "echo 1 > /sys/icn6211/reg"
+yasin@Dtt:~$ adb shell "echo 0 > /sys/icn6211/reg"
+
+adb shell "cat /sys/class/leds/lcd-backlight/brightness" && adb shell "cat /sys/class/leds/aw9523b_bl/brightness"
+
+
