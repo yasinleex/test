@@ -91,22 +91,27 @@ def my_print(pattern, count):
 
 
 def func(n):
+    fn=0
     if n==1:
+        my_print('>', n)
+        print(n)
+        fn=1
+
         my_print('<', n)
-        print(1, '!=', 1)
-        return 1
+        print(" %d!=%d" %(n, fn))
+        return fn
     else:
         my_print('>', n)
         print(n)
         fn=func(n-1)*n
 
         my_print('<', n)
-        print(n, "!=", fn)
+        print(" %d!=%d" %(n, fn))
         return fn
 
 
 print(func(1))
-print(func(9))
+print(func(20))
 
 
 
