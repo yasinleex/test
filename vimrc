@@ -1,6 +1,6 @@
 set nu	"显示行号
 colorscheme desert "选择一个配色方案
-set cursorcolumn "高亮当前列
+"set cursorcolumn "高亮当前列,没啥用
 set cursorline "高亮当前行
 
 filetype plugin on
