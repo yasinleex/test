@@ -1,0 +1,66 @@
+Install:
+	sudo apt-get install gcc-arm-linux-gnueabi
+
+Version Check:
+	arm-linux-gnueabi-gcc -v
+
+Corss Compile:
+	arm-linux-gnueabihf-gcc fb0.c -o fb0 -static
+
+Copy from:
+	http://www.linuxdiyf.com/linux/19483.html
+
+
+
+
+//=========================================================================
+
+Ubuntu下安装arm-linux-gnueabi-xxx编译器
+发布时间:2016-04-03 02:45:49来源:linux网站作者:工程人在路上
+安装ARM-Linux-GCC工具链
+
+在你的Ubuntu系统是最新的前提条件下，只需要执行如下命令就可以成功安装：
+
+sudo apt-get install gcc-arm-linux-gnueabi 
+
+
+安装完成之后，直接在终端中键入
+
+arm-linux-guneabi-gcc -v
+
+Ubuntu下安装arm-linux-gnueabi-xxx编译器
+
+可以看到具体的版本信息。
+
+
+另外我们也可以通过官网的下载包进行安装：
+
+官网：https://launchpad.net/gcc-arm-embedded
+
+目前最新的包：gcc-arm-none-eabi-5_2-2015q4-20151219-linux.tar.bz2 （下载Linux版本）
+
+
+在/home/justin目录下新建目录tools，注意justin是我的用户名，以下以xxx替代:
+
+mkdir tools 
+
+
+保存到/home/justin/tools/目录下，然后进行解压：
+
+sudo tar -xjvf gcc-arm-none-eabi-5_2-2015q4-20151219-linux.tar.bz2 
+
+
+解压完成之后，将编译bin文件导入系统路径,打开/root/.bashrc和/home/xxx/.bashrc文件增加如下信息：
+
+export PATH=$PATH:/home/xxx/tools/gcc-arm-none-eabi-5_2-2015q4-20151219-linux/bin 
+
+
+然后让路径生效
+
+source /root/.bashrc 
+source /home/xxx/.bashrc 
+
+同样在终端中键入arm-linux-guneabi-gcc -v就可以看到版本信息。
+
+
+本文永久更新地址：http://www.linuxdiyf.com/linux/19483.html
