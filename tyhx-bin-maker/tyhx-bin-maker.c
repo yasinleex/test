@@ -67,7 +67,7 @@ int get_record_count(char *name_txt)
 	return i;
 }
 
-int bin_data_fill(char *name_txt, unsigned char *p, unsigned int num_pairs, unsigned char ver)
+int bin_data_fill(char *name_txt, unsigned char *p, unsigned int num_pairs, unsigned char fw_ver, unsigned char chip_type)
 {
 	unsigned char *p_header = p;
 	unsigned char *p_data = p_header + HEADER_SIZE;
@@ -100,14 +100,15 @@ int bin_data_fill(char *name_txt, unsigned char *p, unsigned int num_pairs, unsi
 		PRINT_DBG("line:%03d 0x%02X,0x%02X\n", i + 1, p_data[i * 2], p_data[i * 2 + 1]);
 	}
 
-	p_header[1] = ver;
-	p_header[2] = num_pairs >> 8;
-	p_header[3] = num_pairs;
+	p_header[1] = chip_type;
+	p_header[2] = fw_ver;
+	p_header[3] = num_pairs >> 8;
+	p_header[4] = num_pairs;
 	for (i = 1; i < HEADER_SIZE; i++) {
 		checksum ^= p_header[i];
 	}
 	p_header[0] = checksum;
-	PRINT_INF("header: checksum=0x%X, num_pairs=%d, ver=0x%X\n", checksum, num_pairs, ver);
+	PRINT_INF("header: checksum=0x%X, num_pairs=%d, fw_ver=0x%X, chip_type=0x%X\n", checksum, num_pairs, fw_ver, chip_type);
 
 	fclose(fp_txt);
 	return 1;
@@ -136,7 +137,7 @@ int bin_file_write(char *name_bin, unsigned char *p, int total_size)
 	}
 }
 
-int txt_2_bin(char *name_bin, char *name_txt, unsigned char ver)
+int txt_2_bin(char *name_bin, char *name_txt, unsigned char fw_ver, unsigned char chip_type)
 {
 	FILE *fp_bin, *fp_txt;
 	unsigned char *data;
@@ -160,7 +161,7 @@ int txt_2_bin(char *name_bin, char *name_txt, unsigned char ver)
 	PRINT_DBG("malloc success\n");
 	memset(data, 0xFF, total_size);
 
-	ret = bin_data_fill(name_txt, data, num_pairs, ver);
+	ret = bin_data_fill(name_txt, data, num_pairs, fw_ver, chip_type);
 	if (ret == -1) {
 		PRINT_ERR("bin_data_fill failed\n");
 		free(data);
@@ -184,8 +185,9 @@ int bin_2_txt(char *name_bin, char *name_txt)
 	unsigned char *data;
 	FILE *fp_bin, *fp_txt;
 	unsigned int num_pairs;
-	unsigned char ver;
 	unsigned char checksum;
+	unsigned char chip_type;
+	unsigned char fw_ver;
 	unsigned char temp;
 	int ret;
 	int i;
@@ -204,9 +206,10 @@ int bin_2_txt(char *name_bin, char *name_txt)
 	}
 
 	checksum = header[0];
-	ver = header[1];
-	num_pairs = (header[2] << 8) | header[3];
-	PRINT_INF("get header form %s: checksum=0x%X, num_pairs=%d, ver=0x%X\n", name_bin, checksum, num_pairs, ver);
+	chip_type = header[1];
+	fw_ver = header[2];
+	num_pairs = (header[3] << 8) | header[4];
+	PRINT_INF("get header form %s: checksum=0x%X, num_pairs=%d, fw_ver=0x%X, chip_type=0x%X\n", name_bin, checksum, num_pairs, fw_ver, chip_type);
 
 	temp = 0;
 	for (i = 1; i < HEADER_SIZE; i++) {
@@ -277,8 +280,10 @@ int main(int argc, char *argv[])
 	int ret;
 	char *input_file = NULL;
 	char *output_file = NULL;
-	char *str_ver = NULL;
-	unsigned int ver;
+	char *str_fw_ver = NULL;
+	char *str_chip_type = NULL;
+	unsigned int fw_ver;
+	unsigned int chip_type;
 
 	bool txt2bin = false;
 
@@ -289,7 +294,15 @@ int main(int argc, char *argv[])
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "-v") == 0) {
 			if (i + 1 < argc) {
-				str_ver = argv[i + 1];
+				str_fw_ver = argv[i + 1];
+				i++;
+			} else {
+				PRINT_ERR("Error: missing input file\n");
+				return 1;
+			}
+		} else if (strcmp(argv[i], "-c") == 0) {
+			if (i + 1 < argc) {
+				str_chip_type = argv[i + 1];
 				i++;
 			} else {
 				PRINT_ERR("Error: missing input file\n");
@@ -336,18 +349,27 @@ int main(int argc, char *argv[])
 	PRINT_DBG("input: %s\n", input_file);
 	PRINT_DBG("output: %s\n", output_file);
 	if (txt2bin) {
-		ver = 0;
-		if (str_ver != NULL) {
-			if (sscanf(str_ver, "0x%x", &ver) != 1) {
+		chip_type = 0;
+		if (str_chip_type != NULL) {
+			if (sscanf(str_chip_type, "0x%x", &chip_type) != 1) {
 				PRINT_ERR("Invalid input\n");
-				ver = 0;
+				chip_type = 0;
 			}
 		}
-		PRINT_DBG("ver: 0x%X\n", ver);
+		PRINT_DBG("chip_type: 0x%X\n", chip_type);
+
+		fw_ver = 0;
+		if (str_fw_ver != NULL) {
+			if (sscanf(str_fw_ver, "0x%x", &fw_ver) != 1) {
+				PRINT_ERR("Invalid input\n");
+				fw_ver = 0;
+			}
+		}
+		PRINT_DBG("fw_ver: 0x%X\n", fw_ver);
 	}
 
 	if (txt2bin) {
-		ret = txt_2_bin(output_file, input_file, ver);
+		ret = txt_2_bin(output_file, input_file, fw_ver, chip_type);
 		if (ret == -1) {
 			PRINT_ERR("txt_2_bin failed\n");
 			return 1;
