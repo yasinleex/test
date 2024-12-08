@@ -102,8 +102,8 @@ int bin_data_fill(char *name_txt, unsigned char *p, unsigned int num_pairs, unsi
 
 	p_header[1] = chip_type;
 	p_header[2] = fw_ver;
-	p_header[3] = num_pairs >> 8;
-	p_header[4] = num_pairs;
+	p_header[3] = num_pairs;
+	p_header[4] = num_pairs >> 8;
 	for (i = 1; i < HEADER_SIZE; i++) {
 		checksum ^= p_header[i];
 	}
@@ -208,7 +208,7 @@ int bin_2_txt(char *name_bin, char *name_txt)
 	checksum = header[0];
 	chip_type = header[1];
 	fw_ver = header[2];
-	num_pairs = (header[3] << 8) | header[4];
+	num_pairs = (header[4] << 8) | header[3];
 	PRINT_INF("get header form %s: checksum=0x%X, num_pairs=%d, fw_ver=0x%X, chip_type=0x%X\n", name_bin, checksum, num_pairs, fw_ver, chip_type);
 
 	temp = 0;
